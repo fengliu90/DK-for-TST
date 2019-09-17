@@ -17,4 +17,4 @@ The network used by deep kernel has four fully-connected layers. Two hidden laye
 
 # On-going code
 
-I comment the code of classifier two sample test since I did not test it (in main.py).
+The code of classifier two sample test (C2ST) has been tested in main.py and main_H0.py. However, C2ST has a very high Type-I error.
