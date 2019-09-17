@@ -108,8 +108,8 @@ for n in n_list:
     N1 = 9 * n
     N2 = 9 * n
     batch_size = 18*n
-    N_epoch = int(100*18*n/batch_size)
-    threshold_C2ST = norm.ppf(0.5 + alpha / 2, loc=0.5, scale=np.sqrt(1 / 4/ 18 / n)) - 0.5
+    N_epoch = int(200*18*n/batch_size)
+    # threshold_C2ST = norm.ppf(0.5 + alpha / 2, loc=0.5, scale=np.sqrt(1 / 4/ 18 / n)) - 0.5
     for kk in range(K):
         # torch.manual_seed(kk*19+n)
         # torch.cuda.manual_seed(kk*19+n)
@@ -258,7 +258,8 @@ for n in n_list:
         H_ME = np.zeros(N)
         H_SCF = np.zeros(N)
         H_C2ST = np.zeros(N)
-        T_C2ST = np.zeros(N)
+        Tu_C2ST = np.zeros(N)
+        Tl_C2ST = np.zeros(N)
         M_C2ST = np.zeros(N)
         np.random.seed(1102)
         count_u = 0
@@ -282,7 +283,7 @@ for n in n_list:
             # h_m, threshold_m, mmd_value_m = TST_MMD_median(S, N_per, LM, N1, alpha, device, dtype)
             h_ME = TST_ME(S, N1, alpha, is_train=False, test_locs=test_locs_ME, gwidth=gwidth_ME, J=1, seed=15)
             h_SCF = TST_SCF(S, N1, alpha, is_train=False, test_freqs=test_freqs_SCF, gwidth=gwidth_SCF, J=1, seed=15)
-            H_C2ST[k], T_C2ST[k], M_C2ST[k] = TST_C2ST(S,N1,N_per,alpha,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size,device,dtype)
+            H_C2ST[k], Tu_C2ST[k], Tl_C2ST[k], M_C2ST[k] = TST_C2ST(S,N1,N_per,alpha,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size,device,dtype)
             # acc_C2ST_test = pred.eq(y.data.view_as(pred)).cpu().sum().item() * 1.0 / ((N1 + N2) * 1.0)
             # STAT = abs(acc_C2ST_test - 0.5)
             # if STAT < threshold_C2ST:

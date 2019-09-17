@@ -415,9 +415,10 @@ def TST_C2ST(S,N1,N_per,alpha,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size
     if h == 1:
         S_vector = np.sort(STAT_vector)
         #        print(np.int(np.ceil(N_per*(1 - alpha))))
-        threshold = S_vector[np.int(np.ceil(N_per * (1 - alpha)))]
-    print(threshold)
-    return h, threshold, STAT
+        threshold_upper = S_vector[np.int(np.ceil(N_per * (1 - alpha / 2)))]
+        threshold_lower = S_vector[np.int(np.ceil(N_per *  alpha / 2))]
+    # print(threshold)
+    return h, threshold_upper, threshold_lower, STAT
 
 def TST_MMD_b(Fea, N_per, LM, N1, alpha, device, dtype):
     mmd_vector = np.zeros(N_per)
