@@ -17,7 +17,7 @@ import freqopttest.kernel as kernel
 import freqopttest.tst as tst
 import freqopttest.glo as glo
 from scipy.stats import norm
-from TST_utils import MatConvert, MMDu, MMD_L, TST_MMD_adaptive_bandwidth, TST_MMD_u, TST_ME, TST_SCF
+from TST_utils import MatConvert, MMDu, MMD_L, TST_MMD_adaptive_bandwidth, TST_MMD_u, TST_ME, TST_SCF, TST_C2ST
 
 class ModelLatentF(torch.nn.Module):
     """Latent space for both domains."""
@@ -70,7 +70,7 @@ x_out = 30
 # learning_rate = 0.1 #SGD
 learning_rate = 0.0005#0.0005 #Adam
 learning_rate_C2ST = 0.00005
-K = 10
+K = 1
 Results = np.zeros([6,K])
 reg = 0 * 0.2**2
 N = 100
@@ -108,7 +108,7 @@ for n in n_list:
     N1 = 9 * n
     N2 = 9 * n
     batch_size = 18*n
-    N_epoch = int(100*18*n/batch_size)
+    N_epoch = int(500*18*n/batch_size)
     threshold_C2ST = norm.ppf(0.5 + alpha / 2, loc=0.5, scale=np.sqrt(1 / 4/ 18 / n)) - 0.5
     for kk in range(K):
         # torch.manual_seed(kk*19+n)
@@ -177,12 +177,12 @@ for n in n_list:
 
         output = f(model_C2ST(S).mm(w_C2ST)+b_C2ST)
         pred = output.max(1, keepdim=True)[1]
-        acc_C2ST_train = pred.eq(y.data.view_as(pred)).cpu().sum().item()*1.0/((N1+N2)*1.0)
-        STAT = abs(acc_C2ST_train - 0.5)
-        if STAT<threshold_C2ST:
-            h_C2ST = 0
-        else:
-            h_C2ST = 1
+        # acc_C2ST_train = pred.eq(y.data.view_as(pred)).cpu().sum().item()*1.0/((N1+N2)*1.0)
+        # STAT = abs(acc_C2ST_train - 0.5)
+        # if STAT<threshold_C2ST:
+        #     h_C2ST = 0
+        # else:
+        #     h_C2ST = 1
 
         LM = MMD_L(N1, N2, device, dtype)
         v = torch.div(torch.ones([N1+N2, N1+N2], dtype=torch.float, device=device), (N1+N2)*1.0)
@@ -270,6 +270,8 @@ for n in n_list:
         H_ME = np.zeros(N)
         H_SCF = np.zeros(N)
         H_C2ST = np.zeros(N)
+        T_C2ST = np.zeros(N)
+        M_C2ST = np.zeros(N)
         np.random.seed(1102)
         count_u = 0
         count_adp = 0
@@ -294,12 +296,13 @@ for n in n_list:
             h_SCF = TST_SCF(S, N1, alpha, is_train=False, test_freqs=test_freqs_SCF, gwidth=gwidth_SCF, J=1, seed=15)
             output = f(model_C2ST(S).mm(w_C2ST) + b_C2ST)
             pred = output.max(1, keepdim=True)[1]
-            acc_C2ST_test = pred.eq(y.data.view_as(pred)).cpu().sum().item() * 1.0 / ((N1 + N2) * 1.0)
-            STAT = abs(acc_C2ST_test - 0.5)
-            if STAT < threshold_C2ST:
-                H_C2ST[k] = 0
-            else:
-                H_C2ST[k] = 1
+            H_C2ST[k], T_C2ST[k], M_C2ST[k] = TST_C2ST(pred,y,N_per,alpha)
+            # acc_C2ST_test = pred.eq(y.data.view_as(pred)).cpu().sum().item() * 1.0 / ((N1 + N2) * 1.0)
+            # STAT = abs(acc_C2ST_test - 0.5)
+            # if STAT < threshold_C2ST:
+            #     H_C2ST[k] = 0
+            # else:
+            #     H_C2ST[k] = 1
             count_u = count_u + h_u
             count_adp = count_adp + h_adaptive
             count_ME = count_ME + h_ME
@@ -339,9 +342,9 @@ for n in n_list:
         Results[5, kk] = H_SCF.sum() / N_f
         print(Results,Results.mean(1))
     count = count + 1
-    f = open('Results_'+str(n)+'_H1.pckl', 'wb')
-    pickle.dump([Results,J_star_u,J_star_adp], f)
-    f.close()
+    # f = open('Results_'+str(n)+'_H1.pckl', 'wb')
+    # pickle.dump([Results,J_star_u,J_star_adp], f)
+    # f.close()
     # np.random.seed(1102)
     # torch.manual_seed(1102)
     # torch.cuda.manual_seed(1102)
