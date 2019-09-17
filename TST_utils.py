@@ -350,7 +350,7 @@ def C2ST_NN_fit(S,y,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size,device,dt
     criterion = torch.nn.CrossEntropyLoss()
     f = torch.nn.Softmax()
     ind = np.random.choice(N, N, replace=False)
-    tr_ind = ind[:np.int(np.ceil(N*0.8))]
+    tr_ind = ind[:np.int(np.ceil(N * 0.8))]
     te_ind = ind[np.int(np.ceil(N * 0.8)):]
     dataset = torch.utils.data.TensorDataset(S[tr_ind,:], y[tr_ind])
     dataloader_C2ST = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
@@ -369,8 +369,8 @@ def C2ST_NN_fit(S,y,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size,device,dt
             # Update sigma0 using gradient descent
             optimizer_C2ST.step()
             tt = tt + 1
-        if epoch % 100 == 0:
-            print(loss_C2ST.item())
+        # if epoch % 100 == 0:
+        #     print(loss_C2ST.item())
 
     output = f(model_C2ST(S[te_ind,:]).mm(w_C2ST) + b_C2ST)
     pred = output.max(1, keepdim=True)[1]
@@ -386,9 +386,14 @@ def TST_C2ST(S,N1,N_per,alpha,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size
     y = (torch.cat((torch.zeros(N1, 1), torch.ones(N2, 1)), 0)).squeeze(1).to(device, dtype).long()
     acc_C2ST = C2ST_NN_fit(S,y,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size,device,dtype)
     STAT_vector = np.zeros(N_per)
-    STAT = abs(acc_C2ST - 0.5)
+    STAT = acc_C2ST
     count = 0
-    threshold_C2ST = norm.ppf(0.5 + alpha / 2, loc=0.5, scale=np.sqrt(1 / 4 / N)) - 0.5
+    count_low = 0
+    # threshold = norm.ppf(0.5 + alpha / 2, loc=0.5, scale=np.sqrt(1 / 4 / np.int(np.ceil(N*0.2)))) - 0.5
+    # if STAT > threshold:
+    #     h=1
+    # else:
+    #     h=0
     for r in range(N_per):
         # print r
         ind = np.random.choice(N, N, replace=False)
@@ -396,10 +401,12 @@ def TST_C2ST(S,N1,N_per,alpha,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size
         y_new = y[ind]
         # print(indx)
         acc_C2ST_new = C2ST_NN_fit(S,y_new,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size,device,dtype)
-        STAT_vector[r] = abs(acc_C2ST_new - 0.5)
+        STAT_vector[r] = acc_C2ST_new
         if STAT_vector[r] > STAT:
             count = count + 1
-        if count > np.ceil(N_per * alpha):
+        if STAT_vector[r] < STAT:
+            count_low = count_low + 1
+        if (count > np.ceil(N_per * alpha / 2)) & (count_low > np.ceil(N_per * alpha / 2)):
             h = 0
             threshold = "NaN"
             break
@@ -409,6 +416,7 @@ def TST_C2ST(S,N1,N_per,alpha,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size
         S_vector = np.sort(STAT_vector)
         #        print(np.int(np.ceil(N_per*(1 - alpha))))
         threshold = S_vector[np.int(np.ceil(N_per * (1 - alpha)))]
+    print(threshold)
     return h, threshold, STAT
 
 def TST_MMD_b(Fea, N_per, LM, N1, alpha, device, dtype):
