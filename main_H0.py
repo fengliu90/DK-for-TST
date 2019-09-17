@@ -69,8 +69,8 @@ H = 30  # 3 for lower type-I error and test power
 x_out = 30
 # learning_rate = 0.1 #SGD
 learning_rate = 0.0005#0.0005 #Adam
-learning_rate_C2ST = 0.00005
-K = 1
+learning_rate_C2ST = 0.0005
+K = 10
 Results = np.zeros([6,K])
 reg = 0 * 0.2**2
 N = 100
@@ -108,37 +108,37 @@ for n in n_list:
     N1 = 9 * n
     N2 = 9 * n
     batch_size = 18*n
-    N_epoch = int(500*18*n/batch_size)
+    N_epoch = int(100*18*n/batch_size)
     threshold_C2ST = norm.ppf(0.5 + alpha / 2, loc=0.5, scale=np.sqrt(1 / 4/ 18 / n)) - 0.5
     for kk in range(K):
         # torch.manual_seed(kk*19+n)
         # torch.cuda.manual_seed(kk*19+n)
         if is_cuda:
             model_u = ModelLatentF(x_in, H, x_out).cuda()
-            model_C2ST = ModelLatentF(x_in, H, x_out).cuda()
+            # model_C2ST = ModelLatentF(x_in, H, x_out).cuda()
             # model_u.apply(init_normal)
             # model_u1 = ModelLatentF(x_in, H, x_out).cuda()
             # model_b = ModelLatentF(x_in, H, x_out).cuda()
         else:
             model_u = ModelLatentF(x_in, H, x_out)
-            model_C2ST = ModelLatentF(x_in, H, x_out)
+            # model_C2ST = ModelLatentF(x_in, H, x_out)
             # model_u.apply(init_normal)
             # model_u1 = ModelLatentF(x_in, H, x_out)
             # model_b = ModelLatentF(x_in, H, x_out)
 
-        w_C2ST = torch.randn([x_out,2]).to(device, dtype)
-        b_C2ST = torch.randn([1,2]).to(device, dtype)
-        w_C2ST.requires_grad = True
-        b_C2ST.requires_grad = True
+        # w_C2ST = torch.randn([x_out,2]).to(device, dtype)
+        # b_C2ST = torch.randn([1,2]).to(device, dtype)
+        # w_C2ST.requires_grad = True
+        # b_C2ST.requires_grad = True
 
         optimizer_u = torch.optim.Adam(list(model_u.parameters()), lr=learning_rate)
-        optimizer_C2ST = torch.optim.Adam(list(model_C2ST.parameters())+[w_C2ST]+[b_C2ST], lr=learning_rate_C2ST)
+        # optimizer_C2ST = torch.optim.Adam(list(model_C2ST.parameters())+[w_C2ST]+[b_C2ST], lr=learning_rate_C2ST)
         # optimizer_b = torch.optim.Adam(list(model_b.parameters()), lr=learning_rate)
         # optimizer_u1 = torch.optim.Adam(list(model_u1.parameters()), lr=learning_rate)
 
-        criterion = torch.nn.CrossEntropyLoss()
-        f = torch.nn.Softmax()
-        y = (torch.cat((torch.zeros(N1,1),torch.ones(N2,1)),0)).squeeze(1).to(device, dtype).long()
+        # criterion = torch.nn.CrossEntropyLoss()
+        # f = torch.nn.Softmax()
+        # y = (torch.cat((torch.zeros(N1,1),torch.ones(N2,1)),0)).squeeze(1).to(device, dtype).long()
 
         for i in range(9):
             np.random.seed(seed=1102*kk + i + n)
@@ -152,31 +152,31 @@ for n in n_list:
         S = np.concatenate((s1, s2), axis=0)
         S = MatConvert(S, device, dtype)
         # C2ST
-        np.random.seed(seed=1102)
-        torch.manual_seed(1102)
-        torch.cuda.manual_seed(1102)
-        dataset = torch.utils.data.TensorDataset(S, y)
-        dataloader_C2ST = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
-        len_dataloader = len(dataloader_C2ST)
-        for epoch in range(N_epoch):
-            data_iter = iter(dataloader_C2ST)
-            tt = 0
-            while tt < len_dataloader:
-                # training model using source data
-                data_source = data_iter.next()
-                S_b, y_b = data_source
-                output_b = model_C2ST(S_b).mm(w_C2ST) + b_C2ST
-                loss_C2ST = criterion(output_b, y_b)
-                optimizer_C2ST.zero_grad()
-                loss_C2ST.backward(retain_graph=True)
-                # Update sigma0 using gradient descent
-                optimizer_C2ST.step()
-                tt=tt+1
-            if epoch % 100 ==0:
-                print(loss_C2ST.item())
-
-        output = f(model_C2ST(S).mm(w_C2ST)+b_C2ST)
-        pred = output.max(1, keepdim=True)[1]
+        # np.random.seed(seed=1102)
+        # torch.manual_seed(1102)
+        # torch.cuda.manual_seed(1102)
+        # dataset = torch.utils.data.TensorDataset(S, y)
+        # dataloader_C2ST = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        # len_dataloader = len(dataloader_C2ST)
+        # for epoch in range(N_epoch):
+        #     data_iter = iter(dataloader_C2ST)
+        #     tt = 0
+        #     while tt < len_dataloader:
+        #         # training model using source data
+        #         data_source = data_iter.next()
+        #         S_b, y_b = data_source
+        #         output_b = model_C2ST(S_b).mm(w_C2ST) + b_C2ST
+        #         loss_C2ST = criterion(output_b, y_b)
+        #         optimizer_C2ST.zero_grad()
+        #         loss_C2ST.backward(retain_graph=True)
+        #         # Update sigma0 using gradient descent
+        #         optimizer_C2ST.step()
+        #         tt=tt+1
+        #     if epoch % 100 ==0:
+        #         print(loss_C2ST.item())
+        #
+        # output = f(model_C2ST(S).mm(w_C2ST)+b_C2ST)
+        # pred = output.max(1, keepdim=True)[1]
         # acc_C2ST_train = pred.eq(y.data.view_as(pred)).cpu().sum().item()*1.0/((N1+N2)*1.0)
         # STAT = abs(acc_C2ST_train - 0.5)
         # if STAT<threshold_C2ST:
@@ -186,19 +186,7 @@ for n in n_list:
 
         LM = MMD_L(N1, N2, device, dtype)
         v = torch.div(torch.ones([N1+N2, N1+N2], dtype=torch.float, device=device), (N1+N2)*1.0)
-        # for t in range(500):
-        #     modelu1_output = model_u1(S)
-        #     TEMP = MMDu(modelu1_output, N1, S, sigma)
-        #     mmd_value_temp = -1 * TEMP[0]
-        #     mmd_std_temp = torch.sqrt(TEMP[1])
-        #     STAT_u1 = torch.div(mmd_value_temp, 1.0)
-        #     print("mmd: ", -1 * mmd_value_temp.item(), "mmd_std: ", mmd_std_temp.item(), "Statistic: ", -1 * STAT_u1.item())
-        #     optimizer_u1.zero_grad()
-        #     STAT_u1.backward(retain_graph=True)
-        #     # Update weights using gradient descent
-        #     optimizer_u1.step()
-        # h_u1, threshold_u1, mmd_value_u1 = TST_MMD_u(model_u1(S), N_per, LM, N1, S, sigma, alpha, device, dtype)
-        # print("h:", h_u1, "Threshold:", threshold_u1, "MMD_value:", mmd_value_u1)
+
         np.random.seed(seed=1102)
         torch.manual_seed(1102)
         torch.cuda.manual_seed(1102)
@@ -294,9 +282,7 @@ for n in n_list:
             # h_m, threshold_m, mmd_value_m = TST_MMD_median(S, N_per, LM, N1, alpha, device, dtype)
             h_ME = TST_ME(S, N1, alpha, is_train=False, test_locs=test_locs_ME, gwidth=gwidth_ME, J=1, seed=15)
             h_SCF = TST_SCF(S, N1, alpha, is_train=False, test_freqs=test_freqs_SCF, gwidth=gwidth_SCF, J=1, seed=15)
-            output = f(model_C2ST(S).mm(w_C2ST) + b_C2ST)
-            pred = output.max(1, keepdim=True)[1]
-            H_C2ST[k], T_C2ST[k], M_C2ST[k] = TST_C2ST(pred,y,N_per,alpha)
+            H_C2ST[k], T_C2ST[k], M_C2ST[k] = TST_C2ST(S,N1,N_per,alpha,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size,device,dtype)
             # acc_C2ST_test = pred.eq(y.data.view_as(pred)).cpu().sum().item() * 1.0 / ((N1 + N2) * 1.0)
             # STAT = abs(acc_C2ST_test - 0.5)
             # if STAT < threshold_C2ST:
