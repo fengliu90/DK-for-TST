@@ -109,7 +109,7 @@ for n in n_list:
     N2 = 9 * n
     batch_size = 64
     N_epoch = int(500*18*n/batch_size)
-    threshold_C2ST = norm.ppf(0.5 + alpha / 2, loc=0.5, scale=np.sqrt(1 / 18 / n)) - 0.5
+    threshold_C2ST = norm.ppf(0.5 + alpha / 2, loc=0.5, scale=np.sqrt(1 /4 / 18 / n)) - 0.5
     for kk in range(K):
         # torch.manual_seed(kk*19+n # n=40
         # torch.cuda.manual_seed(kk*19+n)
