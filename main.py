@@ -16,6 +16,7 @@ import freqopttest.data as data
 import freqopttest.kernel as kernel
 import freqopttest.tst as tst
 import freqopttest.glo as glo
+from scipy.stats import norm
 from TST_utils import MatConvert, MMDu, MMD_L, TST_MMD_adaptive_bandwidth, TST_MMD_u, TST_ME, TST_SCF
 
 class ModelLatentF(torch.nn.Module):
@@ -68,7 +69,7 @@ H = 30  # 3 for lower type-I error and test power
 x_out = 30
 # learning_rate = 0.1 #SGD
 learning_rate = 0.0005#0.0005 #Adam
-learning_rate_C2ST = 0.01
+learning_rate_C2ST = 0.00005
 K = 10
 Results = np.zeros([6,K])
 reg = 0 * 0.2**2
@@ -79,6 +80,7 @@ sigma = 1.5 # 1.5
 # sigma0_u = torch.from_numpy(sigma0_u_np).to(device, dtype)
 # sigma0_u.requires_grad = True
 sigma0_u = np.sqrt(0.01)  # 0.1
+
 
 
 mu_mx = np.array([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2], [2, 0], [2, 1], [2, 2]])
@@ -105,9 +107,11 @@ for n in n_list:
     s2 = np.zeros([9 * n, 2])
     N1 = 9 * n
     N2 = 9 * n
-    batch_size = 2 * n
+    batch_size = 18*n
+    N_epoch = int(100*18*n/batch_size)
+    threshold_C2ST = norm.ppf(0.5 + alpha / 2, loc=0.5, scale=np.sqrt(1 / 18 / n)) - 0.5
     for kk in range(K):
-        # torch.manual_seed(kk*19+n)  # n=40
+        # torch.manual_seed(kk*19+n)
         # torch.cuda.manual_seed(kk*19+n)
         if is_cuda:
             model_u = ModelLatentF(x_in, H, x_out).cuda()
@@ -133,6 +137,7 @@ for n in n_list:
         # optimizer_u1 = torch.optim.Adam(list(model_u1.parameters()), lr=learning_rate)
 
         criterion = torch.nn.CrossEntropyLoss()
+        f = torch.nn.Softmax()
         y = (torch.cat((torch.zeros(N1,1),torch.ones(N2,1)),0)).squeeze(1).to(device, dtype).long()
 
         for i in range(9):
@@ -147,31 +152,37 @@ for n in n_list:
         S = np.concatenate((s1, s2), axis=0)
         S = MatConvert(S, device, dtype)
         # C2ST
-        # np.random.seed(seed=1102)
-        # torch.manual_seed(1102)
-        # torch.cuda.manual_seed(1102)
-        # dataset = torch.utils.data.TensorDataset(S, y)
-        # dataloader_C2ST = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
-        # for epoch in range(100):
-        #     len_dataloader = len(dataloader_C2ST)
-        #     data_iter = iter(dataloader_C2ST)
-        #     tt = 0
-        #     while tt < len_dataloader:
-        #         # training model using source data
-        #         data_source = data_iter.next()
-        #         S_b, y_b = data_source
-        #         output_b = model_C2ST(S_b).mm(w_C2ST) + b_C2ST
-        #         loss_C2ST = criterion(output_b, y_b)
-        #         optimizer_C2ST.zero_grad()
-        #         loss_C2ST.backward(retain_graph=True)
-        #         print(loss_C2ST.item())
-        #         # Update sigma0 using gradient descent
-        #         optimizer_C2ST.step()
-        #         tt=tt+1
-        #
-        # output = model_C2ST(S).mm(w_C2ST)+b_C2ST
-        # pred = output.max(1, keepdim=True)[1]
-        # acc_C2ST = pred.eq(y.data.view_as(pred)).cpu().sum().item()*1.0/((N1+N2)*1.0)
+        np.random.seed(seed=1102)
+        torch.manual_seed(1102)
+        torch.cuda.manual_seed(1102)
+        dataset = torch.utils.data.TensorDataset(S, y)
+        dataloader_C2ST = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        len_dataloader = len(dataloader_C2ST)
+        for epoch in range(N_epoch):
+            data_iter = iter(dataloader_C2ST)
+            tt = 0
+            while tt < len_dataloader:
+                # training model using source data
+                data_source = data_iter.next()
+                S_b, y_b = data_source
+                output_b = model_C2ST(S_b).mm(w_C2ST) + b_C2ST
+                loss_C2ST = criterion(output_b, y_b)
+                optimizer_C2ST.zero_grad()
+                loss_C2ST.backward(retain_graph=True)
+                # Update sigma0 using gradient descent
+                optimizer_C2ST.step()
+                tt=tt+1
+            if epoch % 100 ==0:
+                print(loss_C2ST.item())
+
+        output = f(model_C2ST(S).mm(w_C2ST)+b_C2ST)
+        pred = output.max(1, keepdim=True)[1]
+        acc_C2ST_train = pred.eq(y.data.view_as(pred)).cpu().sum().item()*1.0/((N1+N2)*1.0)
+        STAT = abs(acc_C2ST_train - 0.5)
+        if STAT<threshold_C2ST:
+            h_C2ST = 0
+        else:
+            h_C2ST = 1
 
         LM = MMD_L(N1, N2, device, dtype)
         v = torch.div(torch.ones([N1+N2, N1+N2], dtype=torch.float, device=device), (N1+N2)*1.0)
@@ -258,11 +269,13 @@ for n in n_list:
         M_m = np.zeros(N)
         H_ME = np.zeros(N)
         H_SCF = np.zeros(N)
+        H_C2ST = np.zeros(N)
         np.random.seed(1102)
         count_u = 0
         count_adp = 0
         count_ME = 0
         count_SCF = 0
+        count_C2ST = 0
         for k in range(N):
             for i in range(9):
                 np.random.seed(seed=1102 * k + 2*kk + i + n)
@@ -279,11 +292,20 @@ for n in n_list:
             # h_m, threshold_m, mmd_value_m = TST_MMD_median(S, N_per, LM, N1, alpha, device, dtype)
             h_ME = TST_ME(S, N1, alpha, is_train=False, test_locs=test_locs_ME, gwidth=gwidth_ME, J=1, seed=15)
             h_SCF = TST_SCF(S, N1, alpha, is_train=False, test_freqs=test_freqs_SCF, gwidth=gwidth_SCF, J=1, seed=15)
+            output = f(model_C2ST(S).mm(w_C2ST) + b_C2ST)
+            pred = output.max(1, keepdim=True)[1]
+            acc_C2ST_test = pred.eq(y.data.view_as(pred)).cpu().sum().item() * 1.0 / ((N1 + N2) * 1.0)
+            STAT = abs(acc_C2ST_test - 0.5)
+            if STAT < threshold_C2ST:
+                H_C2ST[k] = 0
+            else:
+                H_C2ST[k] = 1
             count_u = count_u + h_u
             count_adp = count_adp + h_adaptive
             count_ME = count_ME + h_ME
             count_SCF = count_SCF + h_SCF
-            print("MMD-DK:", count_u,"MMD-OPT:", count_adp,"MMD-ME:", count_ME,"SCF:", count_SCF)
+            count_C2ST = count_C2ST + int(H_C2ST[k])
+            print("MMD-DK:", count_u,"MMD-OPT:", count_adp,"MMD-ME:", count_ME,"SCF:", count_SCF, "C2ST: ", count_C2ST)
             # print("h_u:", h_u, "Threshold_u:", threshold_u, "MMD_value_u:", mmd_value_u)
             # # print("h_u1:", h_u1, "Threshold_u1:", threshold_u1, "MMD_value_u1:", mmd_value_u1)
             # # print("h_b:", h_b, "Threshold_b:", threshold_b, "MMD_value_b:", mmd_value_b)
@@ -308,9 +330,9 @@ for n in n_list:
             # M_m[k] = mmd_value_m
             H_ME[k] = h_ME
             H_SCF[k] = h_SCF
-        print("Reject rate_u: ", H_u.sum()/N_f,"Reject rate_u1: ", H_u1.sum()/N_f,"Reject rate_adaptive: ", H_adaptive.sum()/N_f,"Reject rate_ME: ", H_ME.sum()/N_f,"Reject rate_SCF: ", H_SCF.sum()/N_f,"Reject rate_m: ", H_m.sum()/N_f)
+        print("Reject rate_u: ", H_u.sum()/N_f,"Reject rate_C2ST: ", H_C2ST.sum()/N_f,"Reject rate_adaptive: ", H_adaptive.sum()/N_f,"Reject rate_ME: ", H_ME.sum()/N_f,"Reject rate_SCF: ", H_SCF.sum()/N_f,"Reject rate_m: ", H_m.sum()/N_f)
         Results[0, kk] = H_u.sum() / N_f
-        Results[1, kk] = H_u1.sum() / N_f
+        Results[1, kk] = H_C2ST.sum() / N_f
         Results[2, kk] = H_adaptive.sum() / N_f
         Results[3, kk] = H_m.sum() / N_f
         Results[4, kk] = H_ME.sum() / N_f
