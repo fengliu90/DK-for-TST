@@ -17,7 +17,7 @@ import freqopttest.kernel as kernel
 import freqopttest.tst as tst
 import freqopttest.glo as glo
 from scipy.stats import norm
-from TST_utils import MatConvert, MMDu, MMD_L, TST_MMD_adaptive_bandwidth, TST_MMD_u, TST_ME, TST_SCF, TST_C2ST
+from TST_utils import MatConvert, MMDu, MMD_L, TST_MMD_adaptive_bandwidth, TST_MMD_u, TST_ME, TST_SCF, TST_C2ST, C2ST_NN_fit
 
 class ModelLatentF(torch.nn.Module):
     """Latent space for both domains."""
@@ -62,7 +62,7 @@ device = torch.device("cuda:0")
 N_per = 100 # permutation times
 alpha = 0.05 # test threshold
 # n_list = [10,20,30,50,70,80,90,100]
-n_list = [20]
+n_list = [100]
 # n = 35
 x_in = 2
 H = 30  # 3 for lower type-I error and test power
@@ -108,7 +108,7 @@ for n in n_list:
     N1 = 9 * n
     N2 = 9 * n
     batch_size = 18*n
-    N_epoch = int(200*18*n/batch_size)
+    N_epoch = int(500*18*n/batch_size)
     # threshold_C2ST = norm.ppf(0.5 + alpha / 2, loc=0.5, scale=np.sqrt(1 / 4/ 18 / n)) - 0.5
     for kk in range(K):
         # torch.manual_seed(kk*19+n)
@@ -155,34 +155,8 @@ for n in n_list:
         # np.random.seed(seed=1102)
         # torch.manual_seed(1102)
         # torch.cuda.manual_seed(1102)
-        # dataset = torch.utils.data.TensorDataset(S, y)
-        # dataloader_C2ST = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
-        # len_dataloader = len(dataloader_C2ST)
-        # for epoch in range(N_epoch):
-        #     data_iter = iter(dataloader_C2ST)
-        #     tt = 0
-        #     while tt < len_dataloader:
-        #         # training model using source data
-        #         data_source = data_iter.next()
-        #         S_b, y_b = data_source
-        #         output_b = model_C2ST(S_b).mm(w_C2ST) + b_C2ST
-        #         loss_C2ST = criterion(output_b, y_b)
-        #         optimizer_C2ST.zero_grad()
-        #         loss_C2ST.backward(retain_graph=True)
-        #         # Update sigma0 using gradient descent
-        #         optimizer_C2ST.step()
-        #         tt=tt+1
-        #     if epoch % 100 ==0:
-        #         print(loss_C2ST.item())
-        #
-        # output = f(model_C2ST(S).mm(w_C2ST)+b_C2ST)
-        # pred = output.max(1, keepdim=True)[1]
-        # acc_C2ST_train = pred.eq(y.data.view_as(pred)).cpu().sum().item()*1.0/((N1+N2)*1.0)
-        # STAT = abs(acc_C2ST_train - 0.5)
-        # if STAT<threshold_C2ST:
-        #     h_C2ST = 0
-        # else:
-        #     h_C2ST = 1
+        y = (torch.cat((torch.zeros(N1, 1), torch.ones(N2, 1)), 0)).squeeze(1).to(device, dtype).long()
+        pred, STAT_C2ST, model_C2ST, w_C2ST, b_C2ST = C2ST_NN_fit(S,y,N1,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size,device,dtype)
 
         LM = MMD_L(N1, N2, device, dtype)
         v = torch.div(torch.ones([N1+N2, N1+N2], dtype=torch.float, device=device), (N1+N2)*1.0)
@@ -260,7 +234,7 @@ for n in n_list:
         H_C2ST = np.zeros(N)
         Tu_C2ST = np.zeros(N)
         Tl_C2ST = np.zeros(N)
-        M_C2ST = np.zeros(N)
+        S_C2ST = np.zeros(N)
         np.random.seed(1102)
         count_u = 0
         count_adp = 0
@@ -283,7 +257,7 @@ for n in n_list:
             # h_m, threshold_m, mmd_value_m = TST_MMD_median(S, N_per, LM, N1, alpha, device, dtype)
             h_ME = TST_ME(S, N1, alpha, is_train=False, test_locs=test_locs_ME, gwidth=gwidth_ME, J=1, seed=15)
             h_SCF = TST_SCF(S, N1, alpha, is_train=False, test_freqs=test_freqs_SCF, gwidth=gwidth_SCF, J=1, seed=15)
-            H_C2ST[k], Tu_C2ST[k], Tl_C2ST[k], M_C2ST[k] = TST_C2ST(S,N1,N_per,alpha,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size,device,dtype)
+            H_C2ST[k], Tu_C2ST[k], S_C2ST[k] = TST_C2ST(S,N1,N_per,alpha,model_C2ST, w_C2ST, b_C2ST,device,dtype)
             # acc_C2ST_test = pred.eq(y.data.view_as(pred)).cpu().sum().item() * 1.0 / ((N1 + N2) * 1.0)
             # STAT = abs(acc_C2ST_test - 0.5)
             # if STAT < threshold_C2ST:
@@ -329,9 +303,9 @@ for n in n_list:
         Results[5, kk] = H_SCF.sum() / N_f
         print(Results,Results.mean(1))
     count = count + 1
-    # f = open('Results_'+str(n)+'_H1.pckl', 'wb')
-    # pickle.dump([Results,J_star_u,J_star_adp], f)
-    # f.close()
+    f = open('Results_'+str(n)+'_H1.pckl', 'wb')
+    pickle.dump([Results,J_star_u,J_star_adp], f)
+    f.close()
     # np.random.seed(1102)
     # torch.manual_seed(1102)
     # torch.cuda.manual_seed(1102)
