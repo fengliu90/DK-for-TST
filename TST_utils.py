@@ -435,9 +435,9 @@ def TST_C2ST(S,N1,N_per,alpha,model_C2ST, w_C2ST, b_C2ST,device,dtype):
     threshold = S_vector[np.int(np.ceil(N_per * (1 - alpha)))]
     threshold_lower = S_vector[np.int(np.ceil(N_per *  alpha))]
     h = 0
-    if STAT >= threshold:
+    if STAT.item() > threshold:
         h = 1
-    if STAT <= threshold_lower:
+    if STAT.item() < threshold_lower:
         h = 1
     # print(threshold)
     return h, threshold, STAT
