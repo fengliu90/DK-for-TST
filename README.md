@@ -19,7 +19,7 @@ The network used by deep kernel has four fully-connected layers. Two hidden laye
 
 C2ST:
 
-The code of classifier two sample test (C2ST) has been tested in main.py and main_H0.py. It seems valid now. However, when we have a lot of samples, test power of C2ST will sligtly drop (see Figure 2 in our paper). 
+The code of classifier two sample test (C2ST) has been tested in main.py and main_H0.py. It works normally now. I use a strategy to set batchsize and number of epochs for C2ST, which makes it perform well. However, when we have a lot of samples, test power of C2ST will sligtly drop (see Figure 2 in our paper). 
 
 In Blob example, if we have a lot of example, the classifier actually cannot distinguish two samples (P and Q are different) since two samples are very near. This caused that, if x is from P (label is 1), then, x+e is from Q (label is 0), where |e| is a very small value. In this case, the classifier actuall cannot distinguish two samples alghouth two sample are from distributions.
 
