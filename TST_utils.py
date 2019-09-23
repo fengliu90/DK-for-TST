@@ -160,7 +160,8 @@ def MMDu(Fea, len_s, Fea_org, sigma, sigma0=0.1, is_smooth=True, is_mixture=Fals
     Y = Fea[len_s:, :]
     X_org = Fea_org[0:len_s, :]
     Y_org = Fea_org[len_s:, :]
-    epsilon = 10^(-10)
+    epsilon = 10 ** (-10)
+    L = 1
 
     nx = X.shape[0]
     ny = Y.shape[0]
@@ -181,9 +182,10 @@ def MMDu(Fea, len_s, Fea_org, sigma, sigma0=0.1, is_smooth=True, is_mixture=Fals
             Kxy = torch.exp(-Dxy / sigma0)
     else:
         if is_smooth:
-            Kx = (1-epsilon) * torch.exp(-Dxx / sigma0 - Dxx_org / sigma) + epsilon * torch.exp(-Dxx_org / sigma)
-            Ky = (1-epsilon) * torch.exp(-Dyy / sigma0 - Dyy_org / sigma) + epsilon * torch.exp(-Dyy_org / sigma)
-            Kxy = (1-epsilon) * torch.exp(-Dxy / sigma0 - Dxy_org / sigma) + epsilon * torch.exp(-Dxy_org / sigma)
+
+            Kx = (1-epsilon) * torch.exp(-(Dxx / sigma0) - (Dxx_org / sigma))**L + epsilon * torch.exp(-Dxx_org / sigma)
+            Ky = (1-epsilon) * torch.exp(-(Dyy / sigma0) - (Dyy_org / sigma))**L + epsilon * torch.exp(-Dyy_org / sigma)
+            Kxy = (1-epsilon) * torch.exp(-(Dxy / sigma0) - (Dxy_org / sigma))**L + epsilon * torch.exp(-Dxy_org / sigma)
         else:
             Kx = torch.exp(-Dxx / sigma0)
             Ky = torch.exp(-Dyy / sigma0)
@@ -224,10 +226,10 @@ def TST_MMD_median(Fea, N_per, LM, N1, alpha, device, dtype):
         threshold = S_mmd_vector[np.int(np.ceil(N_per * (1 - alpha)))]
     return h, threshold, mmd_value.item()
 
-def TST_MMD_adaptive_bandwidth(Fea, N_per, LM, N1, Fea_org, sigma, sigma0, alpha, device, dtype):
+def TST_MMD_adaptive_bandwidth(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha, device, dtype):
     mmd_vector = np.zeros(N_per)
     # mmd_value = MyMMD(Fea, LM, N1).detach().numpy()
-    TEMP = MMDu(Fea, N1, Fea_org, sigma, sigma0)
+    TEMP = MMDu(Fea, N1, Fea_org, sigma, sigma0, is_smooth=False)
     mmd_value = get_item(TEMP[0],is_cuda)
     Kxyxy = TEMP[2]
     count = 0
@@ -263,9 +265,8 @@ def TST_MMD_adaptive_bandwidth(Fea, N_per, LM, N1, Fea_org, sigma, sigma0, alpha
         threshold = S_mmd_vector[np.int(np.ceil(N_per * (1 - alpha)))]
     return h, threshold, mmd_value.item()
 
-def TST_MMD_u(Fea, N_per, LM, N1, Fea_org, sigma, sigma0, alpha,  device, dtype):
+def TST_MMD_u(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha,  device, dtype):
     mmd_vector = np.zeros(N_per)
-    # mmd_value = MyMMD(Fea, LM, N1).detach().numpy()
     TEMP = MMDu(Fea, N1, Fea_org, sigma, sigma0)
     mmd_value = get_item(TEMP[0], is_cuda)
     Kxyxy = TEMP[2]
@@ -302,40 +303,6 @@ def TST_MMD_u(Fea, N_per, LM, N1, Fea_org, sigma, sigma0, alpha,  device, dtype)
         threshold = S_mmd_vector[np.int(np.ceil(N_per * (1 - alpha)))]
     return h, threshold, mmd_value.item()
 
-# def TST_C2ST(pred,y,N_per,alpha):
-#     STAT_vector = np.zeros(N_per)
-#     N = len(pred)
-#     acc_C2ST = pred.eq(y.data.view_as(pred)).cpu().sum().item() * 1.0 / ((N) * 1.0)
-#     STAT = abs(acc_C2ST - 0.5)
-#     count = 0
-#     for r in range(N_per):
-#         # print r
-#         ind = np.random.choice(N, N, replace=False)
-#         # divide into new X, Y
-#         y_new = y[ind]
-#         # print(indx)
-#         acc_C2ST_new = pred.eq(y_new.data.view_as(pred)).cpu().sum().item() * 1.0 / ((N) * 1.0)
-#         STAT_vector[r] = abs(acc_C2ST_new - 0.5)
-#     #     if STAT_vector[r] > STAT:
-#     #         count = count + 1
-#     #     if count > np.ceil(N_per * alpha):
-#     #         h = 0
-#     #         threshold = "NaN"
-#     #         break
-#     #     else:
-#     #         h = 1
-#     # if h == 1:
-#     #     S_vector = np.sort(STAT_vector)
-#     #     #        print(np.int(np.ceil(N_per*(1 - alpha))))
-#     #     threshold = S_vector[np.int(np.ceil(N_per * (1 - alpha)))]
-#     S_vector = np.sort(STAT_vector)
-#     threshold = S_vector[np.int(np.ceil(N_per * (1 - alpha)))]
-#     if STAT > threshold:
-#         h=1
-#     else:
-#         h=0
-#     return h, threshold, STAT
-
 def C2ST_NN_fit(S,y,N1,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size,device,dtype):
     N = S.shape[0]
     if is_cuda:
@@ -351,7 +318,6 @@ def C2ST_NN_fit(S,y,N1,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size,device
     f = torch.nn.Softmax()
     ind = np.random.choice(N, N, replace=False)
     tr_ind = ind[:np.int(np.ceil(N * 1))]
-    te_ind = ind[np.int(np.ceil(N * 0)):]
     te_ind = tr_ind
     dataset = torch.utils.data.TensorDataset(S[tr_ind,:], y[tr_ind])
     dataloader_C2ST = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
@@ -371,12 +337,11 @@ def C2ST_NN_fit(S,y,N1,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size,device
             optimizer_C2ST.step()
             tt = tt + 1
         if epoch % 100 == 0:
-            print(loss_C2ST.item())
+            print(criterion(model_C2ST(S).mm(w_C2ST) + b_C2ST, y).item())
 
     output = f(model_C2ST(S[te_ind,:]).mm(w_C2ST) + b_C2ST)
     pred = output.max(1, keepdim=True)[1]
     STAT_C2ST = abs(pred[:N1].type(torch.FloatTensor).mean() - pred[N1:].type(torch.FloatTensor).mean())
-    # acc_C2ST = pred.eq(y[te_ind].data.view_as(pred)).cpu().sum().item() * 1.0 / ((N) * 1.0)
     return pred, STAT_C2ST, model_C2ST, w_C2ST, b_C2ST
 
 def TST_C2ST(S,N1,N_per,alpha,model_C2ST, w_C2ST, b_C2ST,device,dtype):
@@ -385,52 +350,17 @@ def TST_C2ST(S,N1,N_per,alpha,model_C2ST, w_C2ST, b_C2ST,device,dtype):
     torch.cuda.manual_seed(1102)
     N = S.shape[0]
     f = torch.nn.Softmax()
-    # N2 = N - N1
-    # y = (torch.cat((torch.zeros(N1, 1), torch.ones(N2, 1)), 0)).squeeze(1).to(device, dtype).long()
-    # pred_C2ST, STAT_C2ST, model_C2ST, w_C2ST, b_C2ST = C2ST_NN_fit(S,y,N1,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size,device,dtype)
     output = f(model_C2ST(S).mm(w_C2ST) + b_C2ST)
     pred_C2ST = output.max(1, keepdim=True)[1]
     STAT = abs(pred_C2ST[:N1].type(torch.FloatTensor).mean() - pred_C2ST[N1:].type(torch.FloatTensor).mean())
     STAT_vector = np.zeros(N_per)
-    count = 0
-    count_low = 0
-    # threshold = norm.ppf(0.5 + alpha / 2, loc=0.5, scale=np.sqrt(1 / 4 / np.int(np.ceil(N*0.2)))) - 0.5
-    # if STAT > threshold:
-    #     h=1
-    # else:
-    #     h=0
     for r in range(N_per):
-        # print r
         ind = np.random.choice(N, N, replace=False)
         # divide into new X, Y
         ind_X = ind[:N1]
         ind_Y = ind[N1:]
         # print(indx)
-        # acc_C2ST_new = C2ST_NN_fit(S,y_new,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size,device,dtype)
         STAT_vector[r] = abs(pred_C2ST[ind_X].type(torch.FloatTensor).mean() - pred_C2ST[ind_Y].type(torch.FloatTensor).mean())
-        # if STAT_vector[r] > STAT:
-        #     count = count + 1
-        # ##Two side check
-        # if STAT_vector[r] < STAT:
-        #     count_low = count_low + 1
-        # if (count > np.ceil(N_per * alpha)) & (count_low > np.ceil(N_per * alpha)):
-        #     h = 0
-        #     threshold = "NaN"
-        #     break
-        # else:
-        #     h = 1
-        ## One side check
-        # if count > np.ceil(N_per * alpha):
-        #     h = 0
-        #     threshold = "NaN"
-        #     break
-        # else:
-        #     h = 1
-    # if h == 1:
-    #     S_vector = np.sort(STAT_vector)
-    #     #        print(np.int(np.ceil(N_per*(1 - alpha))))
-    #     threshold = S_vector[np.int(np.ceil(N_per * (1 - alpha)))]
-    #     threshold_lower = S_vector[np.int(np.ceil(N_per *  alpha))]
     S_vector = np.sort(STAT_vector)
     threshold = S_vector[np.int(np.ceil(N_per * (1 - alpha)))]
     threshold_lower = S_vector[np.int(np.ceil(N_per *  alpha))]
@@ -439,7 +369,6 @@ def TST_C2ST(S,N1,N_per,alpha,model_C2ST, w_C2ST, b_C2ST,device,dtype):
         h = 1
     if STAT.item() < threshold_lower:
         h = 1
-    # print(threshold)
     return h, threshold, STAT
 
 def TST_MMD_b(Fea, N_per, LM, N1, alpha, device, dtype):

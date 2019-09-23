@@ -17,7 +17,7 @@ import freqopttest.kernel as kernel
 import freqopttest.tst as tst
 import freqopttest.glo as glo
 from scipy.stats import norm
-from TST_utils import MatConvert, MMDu, MMD_L, TST_MMD_adaptive_bandwidth, TST_MMD_u, TST_ME, TST_SCF, TST_C2ST, C2ST_NN_fit
+from TST_utils import MatConvert, Pdist2, MMDu, MMD_L, TST_MMD_adaptive_bandwidth, TST_MMD_u, TST_ME, TST_SCF, TST_C2ST, C2ST_NN_fit
 
 class ModelLatentF(torch.nn.Module):
     """Latent space for both domains."""
@@ -62,24 +62,24 @@ device = torch.device("cuda:0")
 N_per = 100 # permutation times
 alpha = 0.05 # test threshold
 # n_list = [10,20,30,50,70,80,90,100]
-n_list = [100]
+n_list = [10]
 # n = 35
 x_in = 2
-H = 30  # 3 for lower type-I error and test power
-x_out = 30
+H = 50  # 3 for lower type-I error and test power
+x_out = 50
 # learning_rate = 0.1 #SGD
 learning_rate = 0.0005#0.0005 #Adam
-learning_rate_C2ST = 0.0005
+learning_rate_C2ST = 0.001  # 0.0005 for n < 90
 K = 10
 Results = np.zeros([6,K])
 reg = 0 * 0.2**2
 N = 100
 N_f = 100.0
-sigma = 1.5 # 1.5
+sigma = 0.3 # 1.5
 # sigma0_u_np = np.array(0.1)
 # sigma0_u = torch.from_numpy(sigma0_u_np).to(device, dtype)
 # sigma0_u.requires_grad = True
-sigma0_u = np.sqrt(0.01)  # 0.1
+sigma0_u = 0.002  # 0.1 0.01
 
 
 
@@ -87,8 +87,8 @@ mu_mx = np.array([[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2], [2, 0], [2, 1]
 sigma_mx_1 = np.array([[0.03, 0], [0, 0.03]])
 sigma_mx_2_standard = np.array([[0.03, 0], [0, 0.03]])
 sigma_mx_2 = np.zeros([9,2,2])
-J_star_u = np.zeros([len(n_list),500])
-J_star_adp = np.zeros([len(n_list),500])
+J_star_u = np.zeros([len(n_list),1000])
+J_star_adp = np.zeros([len(n_list),1000])
 count = 0
 
 for i in range(9):
@@ -107,8 +107,9 @@ for n in n_list:
     s2 = np.zeros([9 * n, 2])
     N1 = 9 * n
     N2 = 9 * n
-    batch_size = 18*n
+    batch_size = min(n*2,128)
     N_epoch = int(500*18*n/batch_size)
+    # N_epoch = 500
     # threshold_C2ST = norm.ppf(0.5 + alpha / 2, loc=0.5, scale=np.sqrt(1 / 4/ 18 / n)) - 0.5
     for kk in range(K):
         # torch.manual_seed(kk*19+n)
@@ -126,19 +127,7 @@ for n in n_list:
             # model_u1 = ModelLatentF(x_in, H, x_out)
             # model_b = ModelLatentF(x_in, H, x_out)
 
-        # w_C2ST = torch.randn([x_out,2]).to(device, dtype)
-        # b_C2ST = torch.randn([1,2]).to(device, dtype)
-        # w_C2ST.requires_grad = True
-        # b_C2ST.requires_grad = True
-
         optimizer_u = torch.optim.Adam(list(model_u.parameters()), lr=learning_rate)
-        # optimizer_C2ST = torch.optim.Adam(list(model_C2ST.parameters())+[w_C2ST]+[b_C2ST], lr=learning_rate_C2ST)
-        # optimizer_b = torch.optim.Adam(list(model_b.parameters()), lr=learning_rate)
-        # optimizer_u1 = torch.optim.Adam(list(model_u1.parameters()), lr=learning_rate)
-
-        # criterion = torch.nn.CrossEntropyLoss()
-        # f = torch.nn.Softmax()
-        # y = (torch.cat((torch.zeros(N1,1),torch.ones(N2,1)),0)).squeeze(1).to(device, dtype).long()
 
         for i in range(9):
             np.random.seed(seed=1102*kk + i + n)
@@ -158,19 +147,42 @@ for n in n_list:
         y = (torch.cat((torch.zeros(N1, 1), torch.ones(N2, 1)), 0)).squeeze(1).to(device, dtype).long()
         pred, STAT_C2ST, model_C2ST, w_C2ST, b_C2ST = C2ST_NN_fit(S,y,N1,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size,device,dtype)
 
-        LM = MMD_L(N1, N2, device, dtype)
-        v = torch.div(torch.ones([N1+N2, N1+N2], dtype=torch.float, device=device), (N1+N2)*1.0)
+        # LM = MMD_L(N1, N2, device, dtype)
+        # v = torch.div(torch.ones([N1+N2, N1+N2], dtype=torch.float, device=device), (N1+N2)*1.0)
 
         np.random.seed(seed=1102)
         torch.manual_seed(1102)
         torch.cuda.manual_seed(1102)
-        sigma0 = torch.rand([1]).to(device, dtype)
+        for t in range(1000):
+            modelu_output = model_u(S)
+            TEMP = MMDu(modelu_output, N1, S, sigma, sigma0_u)
+            mmd_value_temp = -1 * TEMP[0]
+            mmd_std_temp = torch.sqrt(TEMP[1])
+            STAT_u = torch.div(mmd_value_temp, mmd_std_temp)
+            J_star_u[count, t] = STAT_u.item()
+            optimizer_u.zero_grad()
+            STAT_u.backward(retain_graph=True)
+            # Update weights using gradient descent
+            optimizer_u.step()
+            if t % 100 == 0:
+                print("mmd: ", -1 * mmd_value_temp.item(), "mmd_std: ", mmd_std_temp.item(), "Statistic: ",
+                      -1 * STAT_u.item())  # ,"Reg: ", loss1.item()
+        h_u, threshold_u, mmd_value_u = TST_MMD_u(model_u(S), N_per, N1, S, sigma, sigma0_u, alpha, device,
+                                                  dtype)
+        # print("h:", h_u, "Threshold:", threshold_u, "MMD_value:", mmd_value_u)
+
+        np.random.seed(seed=1102)
+        torch.manual_seed(1102)
+        torch.cuda.manual_seed(1102)
+        Dxy = Pdist2(S[:N1,:],S[N1:,:])
+        sigma0 = Dxy.median() * (2**(-3))
+        print(sigma0)
         sigma0.requires_grad = True
-        optimizer_sigma0 = torch.optim.Adam([sigma0], lr=learning_rate)
-        for t in range(500):
-            TEMPa = MMDu(S, N1, S, sigma, sigma0**2 + reg, is_smooth=False)
+        optimizer_sigma0 = torch.optim.Adam([sigma0], lr=0.0005)
+        for t in range(1000):
+            TEMPa = MMDu(S, N1, S, sigma, sigma0, is_smooth=False)
             mmd_value_tempa = -1 * TEMPa[0]
-            mmd_std_tempa = torch.sqrt(TEMPa[1]+0.001)
+            mmd_std_tempa = torch.sqrt(TEMPa[1])
             STAT_adaptive = torch.div(mmd_value_tempa, mmd_std_tempa)
             J_star_adp[count, t] = STAT_adaptive.item()
             # print("mmd: ", -1 * mmd_value_tempa.item(), "mmd_std: ", mmd_std_tempa.item(), "Statistic: ", -1 * STAT_adaptive.item())
@@ -178,28 +190,11 @@ for n in n_list:
             STAT_adaptive.backward(retain_graph=True)
             # Update sigma0 using gradient descent
             optimizer_sigma0.step()
-        h_adaptive, threshold_adaptive, mmd_value_adaptive = TST_MMD_adaptive_bandwidth(S, N_per, LM, N1, S, sigma, sigma0**2 + reg, alpha, device, dtype)
+            if t % 100 == 0:
+                print("mmd: ", -1 * mmd_value_tempa.item(), "mmd_std: ", mmd_std_tempa.item(), "Statistic: ",
+                      -1 * STAT_adaptive.item())  # ,"Reg: ", loss1.item()
+        h_adaptive, threshold_adaptive, mmd_value_adaptive = TST_MMD_adaptive_bandwidth(S, N_per, N1, S, sigma, sigma0, alpha, device, dtype)
         # print("h:", h_adaptive, "Threshold:", threshold_adaptive, "MMD_value:", mmd_value_adaptive)
-
-        np.random.seed(seed=1102)
-        torch.manual_seed(1102)
-        torch.cuda.manual_seed(1102)
-        for t in range(500):
-            modelu_output = model_u(S)
-            TEMP = MMDu(modelu_output, N1, S, sigma, sigma0_u ** 2)
-            mmd_value_temp = -1 * TEMP[0]
-            mmd_std_temp = torch.sqrt(TEMP[1]+0.001)
-            STAT_u = torch.div(mmd_value_temp, mmd_std_temp)
-            J_star_u[count, t] = STAT_u.item()
-            optimizer_u.zero_grad()
-            STAT_u.backward(retain_graph=True)
-            # Update weights using gradient descent
-            optimizer_u.step()
-            # print("mmd: ", -1 * mmd_value_temp.item(), "mmd_std: ", mmd_std_temp.item(), "Statistic: ",
-            #       -1 * STAT_u.item())  # ,"Reg: ", loss1.item()
-        h_u, threshold_u, mmd_value_u = TST_MMD_u(model_u(S), N_per, LM, N1, S, sigma, sigma0_u ** 2, alpha, device,
-                                                  dtype)
-        # print("h:", h_u, "Threshold:", threshold_u, "MMD_value:", mmd_value_u)
 
         np.random.seed(seed=1102)
         test_locs_ME, gwidth_ME = TST_ME(S, N1, alpha, is_train=True, test_locs=1, gwidth=1, J=5, seed=15)
@@ -250,20 +245,12 @@ for n in n_list:
                 s2[n * (i):n * (i + 1), :] = np.random.multivariate_normal(mu_mx[i], sigma_mx_2[i], n) # sigma_mx_2[i]
             S = np.concatenate((s1, s2), axis=0)
             S = MatConvert(S, device, dtype)
-            h_u, threshold_u, mmd_value_u = TST_MMD_u(model_u(S), N_per, LM, N1, S, sigma, sigma0_u**2, alpha, device, dtype)
-            # h_u1, threshold_u1, mmd_value_u1 = TST_MMD_u(model_u1(S), N_per, LM, N1, S, sigma, alpha, device, dtype)
-    #         h_b, threshold_b, mmd_value_b = TST_MMD_b(model_b(S), N_per, LM, N1, alpha, device, dtype)
-            h_adaptive, threshold_adaptive, mmd_value_adaptive = TST_MMD_adaptive_bandwidth(S, N_per, LM, N1, S, sigma, sigma0**2 + reg, alpha, device, dtype)
+            h_u, threshold_u, mmd_value_u = TST_MMD_u(model_u(S), N_per, N1, S, sigma, sigma0_u, alpha, device, dtype)
+            h_adaptive, threshold_adaptive, mmd_value_adaptive = TST_MMD_adaptive_bandwidth(S, N_per, N1, S, sigma, sigma0, alpha, device, dtype)
             # h_m, threshold_m, mmd_value_m = TST_MMD_median(S, N_per, LM, N1, alpha, device, dtype)
             h_ME = TST_ME(S, N1, alpha, is_train=False, test_locs=test_locs_ME, gwidth=gwidth_ME, J=1, seed=15)
             h_SCF = TST_SCF(S, N1, alpha, is_train=False, test_freqs=test_freqs_SCF, gwidth=gwidth_SCF, J=1, seed=15)
             H_C2ST[k], Tu_C2ST[k], S_C2ST[k] = TST_C2ST(S,N1,N_per,alpha,model_C2ST, w_C2ST, b_C2ST,device,dtype)
-            # acc_C2ST_test = pred.eq(y.data.view_as(pred)).cpu().sum().item() * 1.0 / ((N1 + N2) * 1.0)
-            # STAT = abs(acc_C2ST_test - 0.5)
-            # if STAT < threshold_C2ST:
-            #     H_C2ST[k] = 0
-            # else:
-            #     H_C2ST[k] = 1
             count_u = count_u + h_u
             count_adp = count_adp + h_adaptive
             count_ME = count_ME + h_ME
@@ -303,7 +290,7 @@ for n in n_list:
         Results[5, kk] = H_SCF.sum() / N_f
         print(Results,Results.mean(1))
     count = count + 1
-    f = open('Results_'+str(n)+'_H1.pckl', 'wb')
+    f = open('Results_'+str(n)+'_H1.pckl_C2ST', 'wb')
     pickle.dump([Results,J_star_u,J_star_adp], f)
     f.close()
     # np.random.seed(1102)
