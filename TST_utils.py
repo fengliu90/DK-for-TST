@@ -253,44 +253,80 @@ def TST_MMD_median(Fea, N_per, LM, N1, alpha, device, dtype):
         threshold = S_mmd_vector[np.int(np.ceil(N_per * (1 - alpha)))]
     return h, threshold, mmd_value.item()
 
+def mmd2_permutations(K, n_X, permutations=500):
+    K = torch.as_tensor(K)
+    n = K.shape[0]
+    assert K.shape[0] == K.shape[1]
+    n_Y = n_X
+    assert n == n_X + n_Y
+
+    w_X = 1
+    w_Y = -1
+
+    ws = torch.full((permutations + 1, n), w_Y, dtype=K.dtype, device=K.device)
+    ws[-1, :n_X] = w_X
+    for i in range(permutations):
+        ws[i, np.random.choice(n, n_X, replace=False)] = w_X
+
+    biased_ests = torch.einsum("pi,ij,pj->p", ws, K, ws)
+    if True:  # u-stat estimator
+        # need to subtract \sum_i k(X_i, X_i) + k(Y_i, Y_i) + 2 k(X_i, Y_i)
+        # first two are just trace, but last is harder:
+        is_X = ws > 0
+        X_inds = is_X.nonzero()[:, 1].view(permutations + 1, n_X)
+        Y_inds = (~is_X).nonzero()[:, 1].view(permutations + 1, n_Y)
+        del is_X, ws
+        cross_terms = K.take(Y_inds * n + X_inds).sum(1)
+        del X_inds, Y_inds
+        ests = (biased_ests - K.trace() + 2 * cross_terms) / (n_X * (n_X - 1))
+
+    est = ests[-1]
+    rest = ests[:-1]
+    p_val = (rest > est).float().mean()
+    return est.item(), p_val.item(), rest
+
 def TST_MMD_adaptive_bandwidth(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha, device, dtype):
+
     mmd_vector = np.zeros(N_per)
-    # mmd_value = MyMMD(Fea, LM, N1).detach().numpy()
-    TEMP = MMDu(Fea, N1, Fea_org, sigma, sigma0, is_smooth=False)
+    TEMP = MMDu(Fea, N1, Fea, sigma, sigma0, is_smooth=False)
     mmd_value = get_item(TEMP[0],is_cuda)
     Kxyxy = TEMP[2]
     count = 0
     # Fea = get_item(Fea,is_cuda)
     nxy = Fea.shape[0]
     nx = N1
-
-    for r in range(N_per):
-        # print r
-        ind = np.random.choice(nxy, nxy, replace=False)
-        # divide into new X, Y
-        indx = ind[:nx]
-        # print(indx)
-        indy = ind[nx:]
-        Kx = Kxyxy[np.ix_(indx, indx)]
-        # print(Kx)
-        Ky = Kxyxy[np.ix_(indy, indy)]
-        Kxy = Kxyxy[np.ix_(indx, indy)]
-
-        TEMP = h1_mean_var_gram(Kx, Ky, Kxy, is_var_computed=False)
-        mmd_vector[r] = TEMP[0]
-        if mmd_vector[r] > mmd_value:
-            count = count + 1
-        if count > np.ceil(N_per * alpha):
-            h = 0
-            threshold = "NaN"
-            break
-        else:
-            h = 1
-    if h == 1:
-        S_mmd_vector = np.sort(mmd_vector)
-        #        print(np.int(np.ceil(N_per*alpha)))
-        threshold = S_mmd_vector[np.int(np.ceil(N_per * (1 - alpha)))]
-    return h, threshold, mmd_value.item()
+    est, p_val, rest = mmd2_permutations(Kxyxy, nx, permutations=500)
+    if p_val < alpha:
+        h = 1
+    else:
+        h = 0
+    # for r in range(N_per):
+    #     # print r
+    #     ind = np.random.choice(nxy, nxy, replace=False)
+    #     # divide into new X, Y
+    #     indx = ind[:nx]
+    #     # print(indx)
+    #     indy = ind[nx:]
+    #     Kx = Kxyxy[np.ix_(indx, indx)]
+    #     # print(Kx)
+    #     Ky = Kxyxy[np.ix_(indy, indy)]
+    #     Kxy = Kxyxy[np.ix_(indx, indy)]
+    #
+    #     TEMP = h1_mean_var_gram(Kx, Ky, Kxy, is_var_computed=False)
+    #     mmd_vector[r] = TEMP[0]
+    #     if mmd_vector[r] > mmd_value:
+    #         count = count + 1
+    #     if count > np.ceil(N_per * alpha):
+    #         h = 0
+    #         threshold = "NaN"
+    #         break
+    #     else:
+    #         h = 1
+    # if h == 1:
+    #     S_mmd_vector = np.sort(mmd_vector)
+    #     #        print(np.int(np.ceil(N_per*alpha)))
+    #     threshold = S_mmd_vector[np.int(np.ceil(N_per * (1 - alpha)))]
+    return h, est, mmd_value.item()
 
 def TST_MMD_u(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha,  device, dtype):
     mmd_vector = np.zeros(N_per)
