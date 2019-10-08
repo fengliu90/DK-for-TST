@@ -59,17 +59,17 @@ is_cuda = True
 
 dtype = torch.float
 device = torch.device("cuda:0")
-N_per = 100 # permutation times
+N_per = 200 # permutation times
 alpha = 0.05 # test threshold
 # n_list = [10,20,30,50,70,80,90,100]
-n_list = [10]
+n_list = [30]
 # n = 35
 x_in = 2
 H = 50  # 3 for lower type-I error and test power
 x_out = 50
 # learning_rate = 0.1 #SGD
 learning_rate = 0.0005#0.0005 #Adam
-learning_rate_C2ST = 0.001  
+learning_rate_C2ST = 0.001
 K = 10
 Results = np.zeros([6,K])
 reg = 0 * 0.2**2
@@ -135,17 +135,9 @@ for n in n_list:
         for i in range(9):
             np.random.seed(seed=819*kk+1 + i + n)
             s2[n * (i):n * (i + 1), :] = np.random.multivariate_normal(mu_mx[i], sigma_mx_1, n) # sigma_mx_2[i]
-        if kk==0:
-            s1_o = s1
-            s2_o = s2
         S = np.concatenate((s1, s2), axis=0)
         S = MatConvert(S, device, dtype)
         # C2ST
-        # np.random.seed(seed=1102)
-        # torch.manual_seed(1102)
-        # torch.cuda.manual_seed(1102)
-        y = (torch.cat((torch.zeros(N1, 1), torch.ones(N2, 1)), 0)).squeeze(1).to(device, dtype).long()
-        pred, STAT_C2ST, model_C2ST, w_C2ST, b_C2ST = C2ST_NN_fit(S,y,N1,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size,device,dtype)
 
         # LM = MMD_L(N1, N2, device, dtype)
         # v = torch.div(torch.ones([N1+N2, N1+N2], dtype=torch.float, device=device), (N1+N2)*1.0)
@@ -175,11 +167,13 @@ for n in n_list:
         torch.manual_seed(1102)
         torch.cuda.manual_seed(1102)
         Dxy = Pdist2(S[:N1,:],S[N1:,:])
-        sigma0 = Dxy.median() * (2**(-3))
+        sigma0 = Dxy.median() # * (2**(-9))
+        # sigma0 = Dxy.median()
+        # sigma0 = torch.rand([1]).to(device,dtype)
         print(sigma0)
         sigma0.requires_grad = True
-        optimizer_sigma0 = torch.optim.Adam([sigma0], lr=0.0005)
-        for t in range(1000):
+        optimizer_sigma0 = torch.optim.Adam([sigma0], lr=0.0005)  # 0.0005
+        for t in range(1):
             TEMPa = MMDu(S, N1, S, sigma, sigma0, is_smooth=False)
             mmd_value_tempa = -1 * TEMPa[0]
             mmd_std_tempa = torch.sqrt(TEMPa[1])
@@ -194,17 +188,19 @@ for n in n_list:
                 print("mmd: ", -1 * mmd_value_tempa.item(), "mmd_std: ", mmd_std_tempa.item(), "Statistic: ",
                       -1 * STAT_adaptive.item())  # ,"Reg: ", loss1.item()
         h_adaptive, threshold_adaptive, mmd_value_adaptive = TST_MMD_adaptive_bandwidth(S, N_per, N1, S, sigma, sigma0, alpha, device, dtype)
+        print(sigma0)
+        print(sigma0_u)
         # print("h:", h_adaptive, "Threshold:", threshold_adaptive, "MMD_value:", mmd_value_adaptive)
 
-        np.random.seed(seed=1102)
-        test_locs_ME, gwidth_ME = TST_ME(S, N1, alpha, is_train=True, test_locs=1, gwidth=1, J=5, seed=15)
-        h_ME = TST_ME(S, N1, alpha, is_train=False, test_locs=test_locs_ME, gwidth=gwidth_ME, J=5, seed=15)
-        print("h:", h_ME, "test_locs_ME:", test_locs_ME, "gwidth_ME:", gwidth_ME)
-
-        np.random.seed(seed=1102)
-        test_freqs_SCF, gwidth_SCF = TST_SCF(S, N1, alpha, is_train=True, test_freqs=1, gwidth=1, J=5, seed=15)
-        h_SCF = TST_SCF(S, N1, alpha, is_train=False, test_freqs=test_freqs_SCF, gwidth=gwidth_SCF, J=5, seed=15)
-        print("h:", h_SCF, "test_freqs_SCF:", test_freqs_SCF, "gwidth_SCF:", gwidth_SCF)
+        # np.random.seed(seed=1102)
+        # test_locs_ME, gwidth_ME = TST_ME(S, N1, alpha, is_train=True, test_locs=1, gwidth=1, J=5, seed=15)
+        # h_ME = TST_ME(S, N1, alpha, is_train=False, test_locs=test_locs_ME, gwidth=gwidth_ME, J=5, seed=15)
+        # print("h:", h_ME, "test_locs_ME:", test_locs_ME, "gwidth_ME:", gwidth_ME)
+        #
+        # np.random.seed(seed=1102)
+        # test_freqs_SCF, gwidth_SCF = TST_SCF(S, N1, alpha, is_train=True, test_freqs=1, gwidth=1, J=5, seed=15)
+        # h_SCF = TST_SCF(S, N1, alpha, is_train=False, test_freqs=test_freqs_SCF, gwidth=gwidth_SCF, J=5, seed=15)
+        # print("h:", h_SCF, "test_freqs_SCF:", test_freqs_SCF, "gwidth_SCF:", gwidth_SCF)
         # S_m = get_item(model_u(S),is_cuda)
         # s1_m = S_m[0:9*n, :]
         # s2_m = S_m[9*n:, :]
@@ -248,14 +244,14 @@ for n in n_list:
             h_u, threshold_u, mmd_value_u = TST_MMD_u(model_u(S), N_per, N1, S, sigma, sigma0_u, alpha, device, dtype)
             h_adaptive, threshold_adaptive, mmd_value_adaptive = TST_MMD_adaptive_bandwidth(S, N_per, N1, S, sigma, sigma0, alpha, device, dtype)
             # h_m, threshold_m, mmd_value_m = TST_MMD_median(S, N_per, LM, N1, alpha, device, dtype)
-            h_ME = TST_ME(S, N1, alpha, is_train=False, test_locs=test_locs_ME, gwidth=gwidth_ME, J=1, seed=15)
-            h_SCF = TST_SCF(S, N1, alpha, is_train=False, test_freqs=test_freqs_SCF, gwidth=gwidth_SCF, J=1, seed=15)
-            H_C2ST[k], Tu_C2ST[k], S_C2ST[k] = TST_C2ST(S,N1,N_per,alpha,model_C2ST, w_C2ST, b_C2ST,device,dtype)
+            # h_ME = TST_ME(S, N1, alpha, is_train=False, test_locs=test_locs_ME, gwidth=gwidth_ME, J=1, seed=15)
+            # h_SCF = TST_SCF(S, N1, alpha, is_train=False, test_freqs=test_freqs_SCF, gwidth=gwidth_SCF, J=1, seed=15)
+            # H_C2ST[k], Tu_C2ST[k], S_C2ST[k] = TST_C2ST(S,N1,N_per,alpha,model_C2ST, w_C2ST, b_C2ST,device,dtype)
             count_u = count_u + h_u
             count_adp = count_adp + h_adaptive
-            count_ME = count_ME + h_ME
-            count_SCF = count_SCF + h_SCF
-            count_C2ST = count_C2ST + int(H_C2ST[k])
+            # count_ME = count_ME + h_ME
+            # count_SCF = count_SCF + h_SCF
+            # count_C2ST = count_C2ST + int(H_C2ST[k])
             print("MMD-DK:", count_u,"MMD-OPT:", count_adp,"MMD-ME:", count_ME,"SCF:", count_SCF, "C2ST: ", count_C2ST)
             # print("h_u:", h_u, "Threshold_u:", threshold_u, "MMD_value_u:", mmd_value_u)
             # # print("h_u1:", h_u1, "Threshold_u1:", threshold_u1, "MMD_value_u1:", mmd_value_u1)
@@ -279,8 +275,8 @@ for n in n_list:
             # H_m[k] = h_m
             # T_m[k] = threshold_m
             # M_m[k] = mmd_value_m
-            H_ME[k] = h_ME
-            H_SCF[k] = h_SCF
+            # H_ME[k] = h_ME
+            # H_SCF[k] = h_SCF
         print("Reject rate_u: ", H_u.sum()/N_f,"Reject rate_C2ST: ", H_C2ST.sum()/N_f,"Reject rate_adaptive: ", H_adaptive.sum()/N_f,"Reject rate_ME: ", H_ME.sum()/N_f,"Reject rate_SCF: ", H_SCF.sum()/N_f,"Reject rate_m: ", H_m.sum()/N_f)
         Results[0, kk] = H_u.sum() / N_f
         Results[1, kk] = H_C2ST.sum() / N_f
@@ -289,8 +285,9 @@ for n in n_list:
         Results[4, kk] = H_ME.sum() / N_f
         Results[5, kk] = H_SCF.sum() / N_f
         print(Results,Results.mean(1))
+        del sigma0
     count = count + 1
-    f = open('Results_'+str(n)+'_H0.pckl_C2ST', 'wb')
+    f = open('Results_'+str(n)+'_H0_bugs.pckl_C2ST', 'wb')
     pickle.dump([Results,J_star_u,J_star_adp], f)
     f.close()
     # np.random.seed(1102)
