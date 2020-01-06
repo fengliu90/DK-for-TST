@@ -1,17 +1,9 @@
 
 import numpy as np
-import matplotlib.pyplot as plt
 import torch
-import torchvision
-import torch.nn.functional as F
-from past.utils import old_div
-import pickle
-import freqopttest.util as util
+import torch.utils.data
 import freqopttest.data as data
-import freqopttest.kernel as kernel
 import freqopttest.tst as tst
-import freqopttest.glo as glo
-from scipy.stats import norm
 
 is_cuda = True
 
@@ -142,7 +134,7 @@ def h1_mean_var_gram(Kx, Ky, Kxy, is_var_computed, use_1sample_U=True):
     return mmd2, varEst, Kxyxy
 
 
-def MMDu(Fea, len_s, Fea_org, sigma, sigma0=0.1, is_smooth=True, is_mixture=False, beta=None, is_var_computed=True, use_1sample_U=True):
+def MMDu(Fea, len_s, Fea_org, sigma, sigma0=0.1, epsilon=10 ** (-10), is_smooth=True, is_mixture=False, beta=None, is_var_computed=True, use_1sample_U=True):
     """
     X: nxd numpy array
     Y: nxd numpy array
@@ -160,7 +152,7 @@ def MMDu(Fea, len_s, Fea_org, sigma, sigma0=0.1, is_smooth=True, is_mixture=Fals
     Y = Fea[len_s:, :]
     X_org = Fea_org[0:len_s, :]
     Y_org = Fea_org[len_s:, :]
-    epsilon = 10 ** (-10)
+    # epsilon = 0.5#10 ** (-10)
     L = 1
 
     nx = X.shape[0]
@@ -182,7 +174,6 @@ def MMDu(Fea, len_s, Fea_org, sigma, sigma0=0.1, is_smooth=True, is_mixture=Fals
             Kxy = torch.exp(-Dxy / sigma0)
     else:
         if is_smooth:
-
             Kx = (1-epsilon) * torch.exp(-(Dxx / sigma0) - (Dxx_org / sigma))**L + epsilon * torch.exp(-Dxx_org / sigma)
             Ky = (1-epsilon) * torch.exp(-(Dyy / sigma0) - (Dyy_org / sigma))**L + epsilon * torch.exp(-Dyy_org / sigma)
             Kxy = (1-epsilon) * torch.exp(-(Dxy / sigma0) - (Dxy_org / sigma))**L + epsilon * torch.exp(-Dxy_org / sigma)
@@ -266,7 +257,7 @@ def mmd2_permutations(K, n_X, permutations=500):
     ws = torch.full((permutations + 1, n), w_Y, dtype=K.dtype, device=K.device)
     ws[-1, :n_X] = w_X
     for i in range(permutations):
-        ws[i, np.random.choice(n, n_X, replace=False)] = w_X
+        ws[i, torch.randperm(n)[:n_X].numpy()] = w_X
 
     biased_ests = torch.einsum("pi,ij,pj->p", ws, K, ws)
     if True:  # u-stat estimator
@@ -286,51 +277,47 @@ def mmd2_permutations(K, n_X, permutations=500):
     return est.item(), p_val.item(), rest
 
 def TST_MMD_adaptive_bandwidth(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha, device, dtype):
-
     mmd_vector = np.zeros(N_per)
-    TEMP = MMDu(Fea, N1, Fea, sigma, sigma0, is_smooth=False)
+    # mmd_value = MyMMD(Fea, LM, N1).detach().numpy()
+    TEMP = MMDu(Fea, N1, Fea_org, sigma, sigma0, is_smooth=False)
     mmd_value = get_item(TEMP[0],is_cuda)
     Kxyxy = TEMP[2]
     count = 0
     # Fea = get_item(Fea,is_cuda)
     nxy = Fea.shape[0]
     nx = N1
-    est, p_val, rest = mmd2_permutations(Kxyxy, nx, permutations=500)
-    if p_val < alpha:
-        h = 1
-    else:
-        h = 0
-    # for r in range(N_per):
-    #     # print r
-    #     ind = np.random.choice(nxy, nxy, replace=False)
-    #     # divide into new X, Y
-    #     indx = ind[:nx]
-    #     # print(indx)
-    #     indy = ind[nx:]
-    #     Kx = Kxyxy[np.ix_(indx, indx)]
-    #     # print(Kx)
-    #     Ky = Kxyxy[np.ix_(indy, indy)]
-    #     Kxy = Kxyxy[np.ix_(indx, indy)]
-    #
-    #     TEMP = h1_mean_var_gram(Kx, Ky, Kxy, is_var_computed=False)
-    #     mmd_vector[r] = TEMP[0]
-    #     if mmd_vector[r] > mmd_value:
-    #         count = count + 1
-    #     if count > np.ceil(N_per * alpha):
-    #         h = 0
-    #         threshold = "NaN"
-    #         break
-    #     else:
-    #         h = 1
-    # if h == 1:
-    #     S_mmd_vector = np.sort(mmd_vector)
-    #     #        print(np.int(np.ceil(N_per*alpha)))
-    #     threshold = S_mmd_vector[np.int(np.ceil(N_per * (1 - alpha)))]
-    return h, est, mmd_value.item()
 
-def TST_MMD_u(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha,  device, dtype):
+    for r in range(N_per):
+        # print r
+        ind = np.random.choice(nxy, nxy, replace=False)
+        # divide into new X, Y
+        indx = ind[:nx]
+        # print(indx)
+        indy = ind[nx:]
+        Kx = Kxyxy[np.ix_(indx, indx)]
+        # print(Kx)
+        Ky = Kxyxy[np.ix_(indy, indy)]
+        Kxy = Kxyxy[np.ix_(indx, indy)]
+
+        TEMP = h1_mean_var_gram(Kx, Ky, Kxy, is_var_computed=False)
+        mmd_vector[r] = TEMP[0]
+        if mmd_vector[r] > mmd_value:
+            count = count + 1
+        if count > np.ceil(N_per * alpha):
+            h = 0
+            threshold = "NaN"
+            break
+        else:
+            h = 1
+    if h == 1:
+        S_mmd_vector = np.sort(mmd_vector)
+        #        print(np.int(np.ceil(N_per*alpha)))
+        threshold = S_mmd_vector[np.int(np.ceil(N_per * (1 - alpha)))]
+    return h, threshold, mmd_value.item()
+
+def TST_MMD_u(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha, device, dtype, epsilon=10 ** (-10)):
     mmd_vector = np.zeros(N_per)
-    TEMP = MMDu(Fea, N1, Fea_org, sigma, sigma0)
+    TEMP = MMDu(Fea, N1, Fea_org, sigma, sigma0, epsilon)
     mmd_value = get_item(TEMP[0], is_cuda)
     Kxyxy = TEMP[2]
     count = 0
