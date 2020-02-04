@@ -28,7 +28,7 @@ is_cuda = True
 parser = argparse.ArgumentParser()
 parser.add_argument("--n_epochs", type=int, default=2000, help="number of epochs of training")
 parser.add_argument("--batch_size", type=int, default=500, help="size of the batches")
-parser.add_argument("--lr", type=float, default=0.0002, help="adam: learning rate") #0.0002
+parser.add_argument("--lr", type=float, default=0.002, help="adam: learning rate") #0.0002
 parser.add_argument("--b1", type=float, default=0.5, help="adam: decay of first order momentum of gradient")
 parser.add_argument("--b2", type=float, default=0.999, help="adam: decay of first order momentum of gradient")
 parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
@@ -218,6 +218,73 @@ for kk in range(K):
     # ---------------------
     #  Training deep kernel
     # ---------------------
+    # np.random.seed(seed=1102)
+    # torch.manual_seed(1102)
+    # torch.cuda.manual_seed(1102)
+    # for epoch in range(opt.n_epochs):
+    #     for i, (imgs, _) in enumerate(dataloader):
+    #         if True:
+    #             ind = np.random.choice(N1, imgs.shape[0], replace=False)
+    #             Fake_imgs = Fake_MNIST_tr[ind]
+    #             # Adversarial ground truths
+    #             valid = Variable(Tensor(imgs.shape[0], 1).fill_(1.0), requires_grad=False)
+    #             fake = Variable(Tensor(imgs.shape[0], 1).fill_(0.0), requires_grad=False)
+    #
+    #             # Configure input
+    #             real_imgs = Variable(imgs.type(Tensor))
+    #             Fake_imgs = Variable(Fake_imgs.type(Tensor))
+    #             X = torch.cat([real_imgs, Fake_imgs], 0)
+    #             Y = torch.cat([valid, fake], 0).squeeze().long()
+    #             # -----------------
+    #             #  Train Featurizer
+    #             # -----------------
+    #
+    #             optimizer_F.zero_grad()
+    #
+    #             modelu_output = featurizer(X)
+    #
+    #             ep = torch.exp(epsilonOPT) / (1 + torch.exp(epsilonOPT))  # 10 ** (-10)#
+    #             sigma = sigmaOPT ** 2
+    #             sigma0_u = sigma0OPT ** 2
+    #
+    #             TEMP = MMDu(modelu_output, imgs.shape[0], X.view(X.shape[0], -1), sigma, sigma0_u, ep)
+    #             mmd_value_temp = -1 * (TEMP[0])  # 10**(-8)
+    #             mmd_std_temp = torch.sqrt(TEMP[1] + 10 ** (-8))  # 0.1
+    #             if mmd_std_temp.item() == 0:
+    #                 print('error std!!')
+    #             if np.isnan(mmd_std_temp.item()):
+    #                 print('error mmd!!')
+    #             f_loss = torch.div(mmd_value_temp, mmd_std_temp)  # - r_full / (N1+N2)
+    #             f_loss.backward()
+    #             optimizer_F.step()
+    #             # J_star_u[t] = f_loss.item()
+    #
+    #             # ---------------------
+    #             #  Train Discriminator
+    #             # ---------------------
+    #
+    #             optimizer_D.zero_grad()
+    #
+    #             # Measure discriminator's ability to classify real from generated samples
+    #             d_loss = adversarial_loss(discriminator(X), Y)
+    #             d_loss.backward()
+    #             optimizer_D.step()
+    #             if (epoch + 1) % 100 == 0:
+    #                 print(
+    #                     "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [Stat: %f]"
+    #                     % (epoch, opt.n_epochs, i, len(dataloader), d_loss.item(), -f_loss.item())
+    #                 )
+    #
+    #             batches_done = epoch * len(dataloader) + i
+    #             # if batches_done % opt.sample_interval == 0:
+    #             #     save_image(gen_imgs.data[:25], "images/%d.png" % batches_done, nrow=5, normalize=True)
+    #         else:
+    #             break
+
+    # ---------------------------
+    #  Training for test location
+    # ---------------------------
+    T_org = TT_org
     np.random.seed(seed=1102)
     torch.manual_seed(1102)
     torch.cuda.manual_seed(1102)
@@ -243,92 +310,25 @@ for kk in range(K):
 
                 modelu_output = featurizer(X)
 
+                modelu_output_real = featurizer(real_imgs)
+                modelu_output_fake = featurizer(Fake_imgs)
+
+
                 ep = torch.exp(epsilonOPT) / (1 + torch.exp(epsilonOPT))  # 10 ** (-10)#
                 sigma = sigmaOPT ** 2
                 sigma0_u = sigma0OPT ** 2
+                T_org = TT_org #/ TT_org.max()
 
-                TEMP = MMDu(modelu_output, imgs.shape[0], X.view(X.shape[0], -1), sigma, sigma0_u, ep)
+                modelu_output_T = featurizer(T_org)
+
+                TEMP = compute_ME_stat(modelu_output_real, modelu_output_fake, modelu_output_T, real_imgs.view(imgs.shape[0],-1), Fake_imgs.view(imgs.shape[0],-1), T_org.view(J,-1), sigma, sigma0_u, ep)
+
                 mmd_value_temp = -1 * (TEMP[0])  # 10**(-8)
-                mmd_std_temp = torch.sqrt(TEMP[1] + 10 ** (-8))  # 0.1
-                if mmd_std_temp.item() == 0:
-                    print('error std!!')
-                if np.isnan(mmd_std_temp.item()):
-                    print('error mmd!!')
-                f_loss = torch.div(mmd_value_temp, mmd_std_temp)  # - r_full / (N1+N2)
+
+                f_loss = mmd_value_temp
                 f_loss.backward()
                 optimizer_F.step()
                 # J_star_u[t] = f_loss.item()
-
-                # ---------------------
-                #  Train Discriminator
-                # ---------------------
-
-                optimizer_D.zero_grad()
-
-                # Measure discriminator's ability to classify real from generated samples
-                d_loss = adversarial_loss(discriminator(X), Y)
-                d_loss.backward()
-                optimizer_D.step()
-                if (epoch + 1) % 100 == 0:
-                    print(
-                        "[Epoch %d/%d] [Batch %d/%d] [D loss: %f] [Stat: %f]"
-                        % (epoch, opt.n_epochs, i, len(dataloader), d_loss.item(), -f_loss.item())
-                    )
-
-                batches_done = epoch * len(dataloader) + i
-                # if batches_done % opt.sample_interval == 0:
-                #     save_image(gen_imgs.data[:25], "images/%d.png" % batches_done, nrow=5, normalize=True)
-            else:
-                break
-
-    # ---------------------------
-    #  Training for test location
-    # ---------------------------
-    # T_org = TT_org
-    # np.random.seed(seed=1102)
-    # torch.manual_seed(1102)
-    # torch.cuda.manual_seed(1102)
-    # for epoch in range(opt.n_epochs):
-    #     for i, (imgs, _) in enumerate(dataloader):
-    #         if True:
-    #             ind = np.random.choice(N1, imgs.shape[0], replace=False)
-    #             Fake_imgs = Fake_MNIST_tr[ind]
-    #             # Adversarial ground truths
-    #             valid = Variable(Tensor(imgs.shape[0], 1).fill_(1.0), requires_grad=False)
-    #             fake = Variable(Tensor(imgs.shape[0], 1).fill_(0.0), requires_grad=False)
-    #
-    #             # Configure input
-    #             real_imgs = Variable(imgs.type(Tensor))
-    #             Fake_imgs = Variable(Fake_imgs.type(Tensor))
-    #             X = torch.cat([real_imgs, Fake_imgs], 0)
-    #             Y = torch.cat([valid, fake], 0).squeeze().long()
-    #             # -----------------
-    #             #  Train Featurizer
-    #             # -----------------
-    #
-    #             optimizer_T.zero_grad()
-    #
-    #             modelu_output = featurizer(X)
-    #
-    #             modelu_output_real = featurizer(real_imgs)
-    #             modelu_output_fake = featurizer(Fake_imgs)
-    #
-    #
-    #             ep = torch.exp(epsilonOPT) / (1 + torch.exp(epsilonOPT))  # 10 ** (-10)#
-    #             sigma = sigmaOPT ** 2
-    #             sigma0_u = sigma0OPT ** 2
-    #             T_org = TT_org #/ TT_org.max()
-    #
-    #             modelu_output_T = featurizer(T_org)
-    #
-    #             TEMP = compute_ME_stat(modelu_output_real, modelu_output_fake, modelu_output_T, real_imgs.view(imgs.shape[0],-1), Fake_imgs.view(imgs.shape[0],-1), T_org.view(J,-1), sigma, sigma0_u, ep)
-    #
-    #             mmd_value_temp = -1 * (TEMP[0])  # 10**(-8)
-    #
-    #             f_loss = mmd_value_temp
-    #             f_loss.backward()
-    #             optimizer_T.step()
-    #             # J_star_u[t] = f_loss.item()
     #
     #             if (epoch + 1) % 100 == 0:
     #                 print(
@@ -398,7 +398,7 @@ for kk in range(K):
         s2 = data_trans[Ind_te_v4[:1000]]
         S = torch.cat([s1.cpu(), s2.cpu()], 0).cuda()
         Sv = S.view(2 * N_te, -1)
-        pdb.set_trace()
+        # pdb.set_trace()
         h_u, threshold_u, mmd_value_u = TST_ME_DK(featurizer(S), Sv, N_te, featurizer(T_org), T_org.view(J,-1), alpha, sigma, sigma0_u, ep)
         # h_adaptive, threshold_adaptive, mmd_value_adaptive = TST_MMD_adaptive_bandwidth(Sv, N_per, N_te, Sv, sigma, sigma0, alpha, device, dtype)
         # h_ME = TST_ME(Sv, N_te, alpha, is_train=False, test_locs=test_locs_ME, gwidth=gwidth_ME, J=10, seed=15)
