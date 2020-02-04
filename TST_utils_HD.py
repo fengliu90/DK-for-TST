@@ -12,6 +12,8 @@ import freqopttest.kernel as kernel
 import freqopttest.tst as tst
 import freqopttest.glo as glo
 from scipy.stats import norm
+import scipy.stats as stats
+import pdb
 
 is_cuda = True
 
@@ -145,7 +147,7 @@ def h1_mean_var_gram(Kx, Ky, Kxy, is_var_computed, use_1sample_U=True):
     return mmd2, varEst, Kxyxy
 
 
-def MMDu(Fea, len_s, Fea_org, sigma, sigma0=0.1, is_smooth=True, is_mixture=False, beta=None, is_var_computed=True, use_1sample_U=True):
+def MMDu(Fea, len_s, Fea_org, sigma, sigma0=0.1, epsilon = 10**(-10), is_smooth=True, is_mixture=False, beta=None, is_var_computed=True, use_1sample_U=True):
     """
     X: nxd numpy array
     Y: nxd numpy array
@@ -163,7 +165,7 @@ def MMDu(Fea, len_s, Fea_org, sigma, sigma0=0.1, is_smooth=True, is_mixture=Fals
     Y = Fea[len_s:, :]
     X_org = Fea_org[0:len_s, :]
     Y_org = Fea_org[len_s:, :]
-    epsilon = 10**(-10)
+    # epsilon = 10**(-10)
     L = 1
 
     nx = X.shape[0]
@@ -202,6 +204,32 @@ def MMDu(Fea, len_s, Fea_org, sigma, sigma0=0.1, is_smooth=True, is_mixture=Fals
 
     return h1_mean_var_gram(Kx, Ky, Kxy, is_var_computed, use_1sample_U)
 
+def MMDu_linear_kernel(Fea, len_s, is_var_computed=True, use_1sample_U=True):
+    """
+    X: nxd numpy array
+    Y: nxd numpy array
+    k: a Kernel object
+    is_var_computed: if True, compute the variance. If False, return None.
+    use_1sample_U: if True, use one-sample U statistic for the cross term
+      i.e., k(X, Y).
+
+    Code based on Arthur Gretton's Matlab implementation for
+    Bounliphone et. al., 2016.
+
+    return (MMD^2, var[MMD^2]) under H1
+    """
+    try:
+        X = Fea[0:len_s, :]
+        Y = Fea[len_s:, :]
+    except:
+        X = Fea[0:len_s].unsqueeze(1)
+        Y = Fea[len_s:].unsqueeze(1)
+
+    Kx = X.mm(X.transpose(0,1))
+    Ky = Y.mm(Y.transpose(0,1))
+    Kxy = X.mm(Y.transpose(0,1))
+
+    return h1_mean_var_gram(Kx, Ky, Kxy, is_var_computed, use_1sample_U)
 
 def MMD_L(N1, N2, device, dtype):  # , kernel_mul=2.0, kernel_num=5, fix_sigma=None
     Lii = torch.ones(N1, N1, device=device, dtype=dtype) / N1 / N1
@@ -211,6 +239,38 @@ def MMD_L(N1, N2, device, dtype):  # , kernel_mul=2.0, kernel_num=5, fix_sigma=N
     Ll = torch.cat([Lij.transpose(0, 1), Ljj], 1)
     LM = torch.cat([Lu, Ll], 0)
     return LM
+
+def mmd2_permutations(K, n_X, permutations=200):
+    K = torch.as_tensor(K)
+    n = K.shape[0]
+    assert K.shape[0] == K.shape[1]
+    n_Y = n_X
+    assert n == n_X + n_Y
+
+    w_X = 1
+    w_Y = -1
+
+    ws = torch.full((permutations + 1, n), w_Y, dtype=K.dtype, device=K.device)
+    ws[-1, :n_X] = w_X
+    for i in range(permutations):
+        ws[i, torch.randperm(n)[:n_X].numpy()] = w_X
+
+    biased_ests = torch.einsum("pi,ij,pj->p", ws, K, ws)
+    if True:  # u-stat estimator
+        # need to subtract \sum_i k(X_i, X_i) + k(Y_i, Y_i) + 2 k(X_i, Y_i)
+        # first two are just trace, but last is harder:
+        is_X = ws > 0
+        X_inds = is_X.nonzero()[:, 1].view(permutations + 1, n_X)
+        Y_inds = (~is_X).nonzero()[:, 1].view(permutations + 1, n_Y)
+        del is_X, ws
+        cross_terms = K.take(Y_inds * n + X_inds).sum(1)
+        del X_inds, Y_inds
+        ests = (biased_ests - K.trace() + 2 * cross_terms) / (n_X * (n_X - 1))
+
+    est = ests[-1]
+    rest = ests[:-1]
+    p_val = (rest > est).float().mean()
+    return est.item(), p_val.item(), rest
 
 def TST_MMD_median(Fea, N_per, LM, N1, alpha, device, dtype):
     mmd_vector = np.zeros(N_per)
@@ -274,16 +334,23 @@ def TST_MMD_adaptive_bandwidth(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha, de
         threshold = S_mmd_vector[np.int(np.ceil(N_per * (1 - alpha)))]
     return h, threshold, mmd_value.item()
 
-def TST_MMD_ab_difference_size(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha, device, dtype):
+def TST_MMD_u(Fea, N_per, N1, Fea_org, sigma, sigma0, ep, alpha, device, dtype, is_smooth=True):
     mmd_vector = np.zeros(N_per)
-    # mmd_value = MyMMD(Fea, LM, N1).detach().numpy()
-    TEMP = MMDu(Fea, N1, Fea_org, sigma, sigma0, is_smooth=False,is_var_computed=False)
-    mmd_value = get_item(TEMP[0],is_cuda)
+    TEMP = MMDu(Fea, N1, Fea_org, sigma, sigma0, ep, is_smooth)
+    mmd_value = get_item(TEMP[0], is_cuda)
     Kxyxy = TEMP[2]
     count = 0
-    # Fea = get_item(Fea,is_cuda)
+    # Fea = get_item(Fea, is_cuda)
     nxy = Fea.shape[0]
     nx = N1
+
+    # mmd_value_nn, p_val, rest = mmd2_permutations(Kxyxy, nx, permutations=500)
+    # if p_val > alpha:
+    #     h = 0
+    # else:
+    #     h = 1
+    # threshold = "NaN"
+    # return h, threshold, mmd_value_nn
 
     for r in range(N_per):
         # print r
@@ -313,9 +380,9 @@ def TST_MMD_ab_difference_size(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha, de
         threshold = S_mmd_vector[np.int(np.ceil(N_per * (1 - alpha)))]
     return h, threshold, mmd_value.item()
 
-def TST_MMD_u(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha,  device, dtype):
+def TST_MMD_u_linear_kernel(Fea, N_per, N1, alpha,  device, dtype):
     mmd_vector = np.zeros(N_per)
-    TEMP = MMDu(Fea, N1, Fea_org, sigma, sigma0)
+    TEMP = MMDu_linear_kernel(Fea, N1)
     mmd_value = get_item(TEMP[0], is_cuda)
     Kxyxy = TEMP[2]
     count = 0
@@ -350,6 +417,7 @@ def TST_MMD_u(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha,  device, dtype):
         #        print(np.int(np.ceil(N_per*alpha)))
         threshold = S_mmd_vector[np.int(np.ceil(N_per * (1 - alpha)))]
     return h, threshold, mmd_value.item()
+
 
 def TST_MMD_u_different_size(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha,  device, dtype):
     mmd_vector = np.zeros(N_per)
@@ -457,6 +525,34 @@ def TST_C2ST(S,N1,N_per,alpha,model_C2ST, w_C2ST, b_C2ST,device,dtype):
     #     h = 1
     return h, threshold, STAT
 
+def TST_LCE(S,N1,N_per,alpha,model_C2ST, w_C2ST, b_C2ST, device,dtype):
+    np.random.seed(seed=1102)
+    torch.manual_seed(1102)
+    torch.cuda.manual_seed(1102)
+    N = S.shape[0]
+    f = torch.nn.Softmax()
+    output = f(model_C2ST(S).mm(w_C2ST) + b_C2ST)
+    # pred_C2ST = output.max(1, keepdim=True)[1]
+    STAT = abs(output[:N1,0].type(torch.FloatTensor).mean() - output[N1:,0].type(torch.FloatTensor).mean())
+    STAT_vector = np.zeros(N_per)
+    for r in range(N_per):
+        ind = np.random.choice(N, N, replace=False)
+        # divide into new X, Y
+        ind_X = ind[:N1]
+        ind_Y = ind[N1:]
+        # print(indx)
+        STAT_vector[r] = abs(output[ind_X,0].type(torch.FloatTensor).mean() - output[ind_Y,0].type(torch.FloatTensor).mean())
+    S_vector = np.sort(STAT_vector)
+    threshold = S_vector[np.int(np.ceil(N_per * (1 - alpha)))]
+    threshold_lower = S_vector[np.int(np.ceil(N_per *  alpha))]
+    h = 0
+    if STAT.item() > threshold:
+        h = 1
+    # if STAT.item() < threshold_lower:
+    #     h = 1
+    return h, threshold, STAT
+
+
 def TST_C2ST_D(S,N1,N_per,alpha,discriminator,device,dtype):
     np.random.seed(seed=1102)
     torch.manual_seed(1102)
@@ -474,6 +570,33 @@ def TST_C2ST_D(S,N1,N_per,alpha,discriminator,device,dtype):
         ind_Y = ind[N1:]
         # print(indx)
         STAT_vector[r] = abs(pred_C2ST[ind_X].type(torch.FloatTensor).mean() - pred_C2ST[ind_Y].type(torch.FloatTensor).mean())
+    S_vector = np.sort(STAT_vector)
+    threshold = S_vector[np.int(np.ceil(N_per * (1 - alpha)))]
+    threshold_lower = S_vector[np.int(np.ceil(N_per *  alpha))]
+    h = 0
+    if STAT.item() > threshold:
+        h = 1
+    # if STAT.item() < threshold_lower:
+    #     h = 1
+    return h, threshold, STAT
+
+def TST_LCE_D(S,N1,N_per,alpha,discriminator,device,dtype):
+    np.random.seed(seed=1102)
+    torch.manual_seed(1102)
+    torch.cuda.manual_seed(1102)
+    N = S.shape[0]
+    f = torch.nn.Softmax()
+    output = discriminator(S)[0]
+    # pred_C2ST = output.max(1, keepdim=True)[1]
+    STAT = abs(output[:N1,0].type(torch.FloatTensor).mean() - output[N1:,0].type(torch.FloatTensor).mean())
+    STAT_vector = np.zeros(N_per)
+    for r in range(N_per):
+        ind = np.random.choice(N, N, replace=False)
+        # divide into new X, Y
+        ind_X = ind[:N1]
+        ind_Y = ind[N1:]
+        # print(indx)
+        STAT_vector[r] = abs(output[ind_X,0].type(torch.FloatTensor).mean() - output[ind_Y,0].type(torch.FloatTensor).mean())
     S_vector = np.sort(STAT_vector)
     threshold = S_vector[np.int(np.ceil(N_per * (1 - alpha)))]
     threshold_lower = S_vector[np.int(np.ceil(N_per *  alpha))]
@@ -545,3 +668,134 @@ def TST_SCF(Fea, N1, alpha, is_train, test_freqs, gwidth, J = 1, seed = 15):
         if test_result['h0_rejected']:
             h = 1
         return h
+
+def gauss_kernel(X, test_locs, X_org, test_locs_org, sigma, sigma0, epsilon):
+    """Compute a X.shape[0] x test_locs.shape[0] Gaussian kernel matrix
+    """
+    DXT = Pdist2(X, test_locs)
+    DXT_org = Pdist2(X_org, test_locs_org)
+    Kx = (1 - epsilon) * torch.exp(-(DXT / sigma0) ** 1 - DXT_org / sigma) + epsilon * torch.exp(-DXT_org / sigma)
+    return Kx
+
+def compute_ME_stat(X, Y, T, X_org, Y_org, T_org, sigma, sigma0, epsilon):
+    """
+    Compute the non-centrality parameter of the non-central Chi-squared
+    which is the distribution of the test statistic under the H_1 (and H_0).
+    The nc parameter is also the test statistic.
+    """
+    # if gwidth is None or gwidth <= 0:
+    #     raise ValueError('require gaussian_width > 0. Was %s.' % (str(gwidth)))
+    reg = 0#10**(-8)
+    n = X.shape[0]
+    J = T.shape[0]
+    g = gauss_kernel(X, T, X_org, T_org, sigma, sigma0, epsilon)
+    h = gauss_kernel(Y, T, Y_org, T_org, sigma, sigma0, epsilon)
+    Z = g - h
+    W = Z.mean(0)
+    Sig = ((Z - W).transpose(1, 0)).mm((Z - W))
+    if is_cuda:
+        IJ = torch.eye(J).cuda()
+    else:
+        IJ = torch.eye(J)
+    # pdb.set_trace()
+    s = n*W.unsqueeze(0).mm(torch.solve(W.unsqueeze(1),Sig + reg*IJ)[0])
+    # s = generic_nc_parameter(Z, reg='auto')
+    return s
+
+# def generic_nc_parameter(Z, reg='auto'):
+#     """
+#     Compute the non-centrality parameter of the non-central Chi-squared
+#     which is approximately the distribution of the test statistic under the H_1
+#     (and H_0). The empirical nc parameter is also the test statistic.
+#     - reg can be 'auto'. This will automatically determine the lowest value of
+#     the regularization parameter so that the statistic can be computed.
+#     """
+#     #from IPython.core.debugger import Tracer
+#     #Tracer()()
+#
+#     n = Z.shape[0]
+#     Sig = np.cov(Z.T)
+#     W = np.mean(Z, 0)
+#     n_features = len(W)
+#     if n_features == 1:
+#         reg = 0 if reg=='auto' else reg
+#         s = float(n)*(W[0]**2)/(reg+Sig)
+#     else:
+#         if reg=='auto':
+#             # First compute with reg=0. If no problem, do nothing.
+#             # If the covariance is singular, make 0 eigenvalues positive.
+#             try:
+#                 s = n*np.dot(np.linalg.solve(Sig, W), W)
+#             except np.linalg.LinAlgError:
+#                 try:
+#                     # singular matrix
+#                     # eigen decompose
+#                     evals, eV = np.linalg.eig(Sig)
+#                     evals = np.real(evals)
+#                     eV = np.real(eV)
+#                     evals = np.maximum(0, evals)
+#                     # find the non-zero second smallest eigenvalue
+#                     snd_small = np.sort(evals[evals > 0])[0]
+#                     evals[evals <= 0] = snd_small
+#
+#                     # reconstruct Sig
+#                     Sig = eV.dot(np.diag(evals)).dot(eV.T)
+#                     # try again
+#                     s = n*np.linalg.solve(Sig, W).dot(W)
+#                 except:
+#                     s = -1
+#         else:
+#             # assume reg is a number
+#             # test statistic
+#             try:
+#                 s = n*np.linalg.solve(Sig + reg*np.eye(Sig.shape[0]), W).dot(W)
+#             except np.linalg.LinAlgError:
+#                 print('LinAlgError. Return -1 as the nc_parameter.')
+#                 s = -1
+#     return s
+#
+# def perform_test(self, tst_data):
+#     """perform the two-sample test and return values computed in a dictionary:
+#     {alpha: 0.01, pvalue: 0.0002, test_stat: 2.3, h0_rejected: True, ...}
+#     tst_data: an instance of TSTData
+#     """
+#     d = tst_data.dim()
+#     chi2_stat = self.compute_stat(tst_data)
+#     pvalue = stats.chi2.sf(chi2_stat, d)
+#     alpha = self.alpha
+#     results = {'alpha': self.alpha, 'pvalue': pvalue, 'test_stat': chi2_stat,
+#                    'h0_rejected': pvalue < alpha}
+#     return results
+
+def TST_ME_DK(Fea, Fea_org, N1, T, T_org, alpha, sigma, sigma0, epsilon):
+    # Fea = get_item(Fea,is_cuda)
+    # Fea_org = get_item(Fea_org, is_cuda)
+    X = Fea[0:N1,:]
+    Y = Fea[N1:,:]
+    X_org = Fea_org[0:N1, :]
+    Y_org = Fea_org[N1:, :]
+    J = T.shape[0]
+    # s = compute_ME_stat(X, Y, T, X_org, Y_org, T_org, sigma, sigma0, epsilon)
+    reg = 0 #10 ** (-8)
+    n = X.shape[0]
+    J = T.shape[0]
+    g = gauss_kernel(X, T, X_org, T_org, sigma, sigma0, epsilon)
+    h = gauss_kernel(Y, T, Y_org, T_org, sigma, sigma0, epsilon)
+    Z = g - h
+    W = Z.mean(0)
+    Sig = ((Z - W).transpose(1, 0)).mm((Z - W))
+    if is_cuda:
+        IJ = torch.eye(J).cuda()
+    else:
+        IJ = torch.eye(J)
+    # pdb.set_trace()
+    # s = n*W**2 / Sig
+    s = n * W.unsqueeze(0).mm(torch.solve(W.unsqueeze(1), Sig + reg * IJ)[0])
+    pvalue = stats.chi2.sf(s.item(), J)
+    if pvalue<alpha:
+        h = 1
+    else:
+        h = 0
+    pdb.set_trace()
+    # h = pvalue<alpha
+    return h, pvalue, s

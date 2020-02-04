@@ -315,9 +315,9 @@ def TST_MMD_adaptive_bandwidth(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha, de
         threshold = S_mmd_vector[np.int(np.ceil(N_per * (1 - alpha)))]
     return h, threshold, mmd_value.item()
 
-def TST_MMD_u(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha, device, dtype, epsilon=10 ** (-10)):
+def TST_MMD_u(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha, device, dtype, epsilon=10 ** (-10),is_smooth=True):
     mmd_vector = np.zeros(N_per)
-    TEMP = MMDu(Fea, N1, Fea_org, sigma, sigma0, epsilon)
+    TEMP = MMDu(Fea, N1, Fea_org, sigma, sigma0, epsilon,is_smooth)
     mmd_value = get_item(TEMP[0], is_cuda)
     Kxyxy = TEMP[2]
     count = 0
@@ -325,33 +325,41 @@ def TST_MMD_u(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha, device, dtype, epsi
     nxy = Fea.shape[0]
     nx = N1
 
-    for r in range(N_per):
-        # print r
-        ind = np.random.choice(nxy, nxy, replace=False)
-        # divide into new X, Y
-        indx = ind[:nx]
-        # print(indx)
-        indy = ind[nx:]
-        Kx = Kxyxy[np.ix_(indx, indx)]
-        # print(Kx)
-        Ky = Kxyxy[np.ix_(indy, indy)]
-        Kxy = Kxyxy[np.ix_(indx, indy)]
+    mmd_value_nn, p_val, rest = mmd2_permutations(Kxyxy, nx, permutations=200)
+    if p_val > alpha:
+        h = 0
+    else:
+        h = 1
+    threshold = "NaN"
+    return h,threshold,mmd_value_nn
 
-        TEMP = h1_mean_var_gram(Kx, Ky, Kxy, is_var_computed=False)
-        mmd_vector[r] = TEMP[0]
-        if mmd_vector[r] > mmd_value:
-            count = count + 1
-        if count > np.ceil(N_per * alpha):
-            h = 0
-            threshold = "NaN"
-            break
-        else:
-            h = 1
-    if h == 1:
-        S_mmd_vector = np.sort(mmd_vector)
-        #        print(np.int(np.ceil(N_per*alpha)))
-        threshold = S_mmd_vector[np.int(np.ceil(N_per * (1 - alpha)))]
-    return h, threshold, mmd_value.item()
+    # for r in range(N_per):
+    #     # print r
+    #     ind = np.random.choice(nxy, nxy, replace=False)
+    #     # divide into new X, Y
+    #     indx = ind[:nx]
+    #     # print(indx)
+    #     indy = ind[nx:]
+    #     Kx = Kxyxy[np.ix_(indx, indx)]
+    #     # print(Kx)
+    #     Ky = Kxyxy[np.ix_(indy, indy)]
+    #     Kxy = Kxyxy[np.ix_(indx, indy)]
+    #
+    #     TEMP = h1_mean_var_gram(Kx, Ky, Kxy, is_var_computed=False)
+    #     mmd_vector[r] = TEMP[0]
+    #     if mmd_vector[r] > mmd_value:
+    #         count = count + 1
+    #     if count > np.ceil(N_per * alpha):
+    #         h = 0
+    #         threshold = "NaN"
+    #         break
+    #     else:
+    #         h = 1
+    # if h == 1:
+    #     S_mmd_vector = np.sort(mmd_vector)
+    #     #        print(np.int(np.ceil(N_per*alpha)))
+    #     threshold = S_mmd_vector[np.int(np.ceil(N_per * (1 - alpha)))]
+    # return h, threshold, mmd_value.item()
 
 def TST_MMD_u_linear_kernel(Fea, N_per, N1, alpha,  device, dtype):
     mmd_vector = np.zeros(N_per)
@@ -482,8 +490,8 @@ def TST_LCE(S,N1,N_per,alpha,model_C2ST, w_C2ST, b_C2ST,device,dtype):
     h = 0
     if STAT.item() > threshold:
         h = 1
-    if STAT.item() < threshold_lower:
-        h = 1
+    # if STAT.item() < threshold_lower:
+    #     h = 1
     return h, threshold, STAT
 
 def TST_MMD_b(Fea, N_per, LM, N1, alpha, device, dtype):
