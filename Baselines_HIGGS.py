@@ -82,7 +82,7 @@ del data
 J_star_u = np.zeros([N_epoch])
 J_star_adp = np.zeros([N_epoch])
 Results = np.zeros([5,K])
-
+# Repeat experiments K times (K = 10) and report average test power (rejection rate)
 for kk in range(K):
     torch.manual_seed(kk * 19 + n)
     torch.cuda.manual_seed(kk * 19 + n)
@@ -99,15 +99,17 @@ for kk in range(K):
     N2 = n
     S = np.concatenate((s1, s2), axis=0)
     S = MatConvert(S, device, dtype)
+
+    # Train C2ST-L
+    y = (torch.cat((torch.zeros(N1, 1), torch.ones(N2, 1)), 0)).squeeze(1).to(device, dtype).long()
+    pred, STAT_C2ST_L, model_C2ST_L, w_C2ST_L, b_C2ST_L = C2ST_NN_fit(S, y, N1, x_in, H, x_out, 0.002,
+                                                                      N_epoch, batch_size, device, dtype)
     # Train C2ST-S
+    np.random.seed(seed=819 * kk + n)
     y = (torch.cat((torch.zeros(N1, 1), torch.ones(N2, 1)), 0)).squeeze(1).to(device, dtype).long()
     pred, STAT_C2ST_S, model_C2ST_S, w_C2ST_S, b_C2ST_S = C2ST_NN_fit(S, y, N1, x_in, H, x_out, 0.001, N_epoch,
                                                               batch_size, device, dtype)
-    # Train C2ST-L
-    np.random.seed(seed=819 * kk + n)
-    y = (torch.cat((torch.zeros(N1, 1), torch.ones(N2, 1)), 0)).squeeze(1).to(device, dtype).long()
-    pred, STAT_C2ST_L, model_C2ST_L, w_C2ST_L, b_C2ST_L = C2ST_NN_fit(S, y, N1, x_in, H, x_out, 0.0015,
-                                                                      N_epoch, batch_size, device, dtype)
+
     # Train MMD-O
     np.random.seed(seed=1102)
     torch.manual_seed(1102)
