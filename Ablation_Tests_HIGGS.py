@@ -19,7 +19,7 @@ import torch
 import pickle
 import argparse
 parser = argparse.ArgumentParser()
-from TST_utils_HD import MatConvert, Pdist2, MMDu, get_item, TST_MMD_adaptive_bandwidth, TST_MMD_u, TST_ME, TST_SCF, TST_C2ST, C2ST_NN_fit, MMDu_linear_kernel, TST_MMD_u_linear_kernel,TST_LCE
+from TST_utils_HD import MatConvert, Pdist2, MMDu, get_item, TST_MMD_adaptive_bandwidth, TST_MMD_u, C2ST_NN_fit, MMDu_linear_kernel, TST_MMD_u_linear_kernel
 
 class ModelLatentF(torch.nn.Module):
     """Latent space for both domains."""
@@ -89,7 +89,7 @@ J_star_u = np.zeros([N_epoch])
 J_star_adp = np.zeros([N_epoch])
 Results = np.zeros([4,K])
 
-
+# Repeat experiments K times (K = 10) and report average test power (rejection rate)
 for kk in range(K):
     torch.manual_seed(kk * 19 + n)
     torch.cuda.manual_seed(kk * 19 + n)
@@ -236,7 +236,7 @@ for kk in range(K):
         if t % 100 == 0:
             print("mmd_value: ", -1 * mmd_value_tempa_1.item(), "mmd_std: ", mmd_std_tempa_1.item(), "Statistic: ",
                   -1 * STAT_adaptive_1.item())
-    h_adaptive_1, threshold_adaptive_1, mmd_value_adaptive_1 = TST_MMD_u(S_m, N_per, N1, S_m, sigma_1, sigma0_1, ep_1,
+    h_adaptive_1, threshold_adaptive_1, mmd_value_adaptive_1 = TST_MMD_u(S_m, N_per, N1, S, sigma_1, sigma0_1, ep_1,
                                                                          alpha, device, dtype)
     print("h:", h_adaptive_1, "Threshold:", threshold_adaptive_1, "MMD_value:", mmd_value_adaptive_1)
 

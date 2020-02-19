@@ -98,8 +98,9 @@ J_star_adp = np.zeros([N_epoch])
 ep_OPT = np.zeros([K])
 s_OPT = np.zeros([K])
 s0_OPT = np.zeros([K])
-Results = np.zeros([5,K])
+Results = np.zeros([4,K])
 
+# Repeat experiments K times (K = 10) and report average test power (rejection rate)
 for kk in range(K):
     torch.manual_seed(kk * 19 + n)
     torch.cuda.manual_seed(kk * 19 + n)
@@ -244,7 +245,7 @@ for kk in range(K):
         if t % 100 == 0:
             print("mmd_value: ", -1 * mmd_value_tempa_1.item(), "mmd_std: ", mmd_std_tempa_1.item(), "Statistic: ",
                   -1 * STAT_adaptive_1.item())
-    h_adaptive_1, threshold_adaptive_1, mmd_value_adaptive_1 = TST_MMD_u(S_m, N_per, N1, S_m, sigma_1, sigma0_1, ep_1,
+    h_adaptive_1, threshold_adaptive_1, mmd_value_adaptive_1 = TST_MMD_u(S_m, N_per, N1, S, sigma_1, sigma0_1, ep_1,
                                                                                     alpha, device, dtype)
     print("h:", h_adaptive_1, "Threshold:", threshold_adaptive_1, "MMD_value:", mmd_value_adaptive_1)
 
@@ -288,7 +289,7 @@ for kk in range(K):
                                                                                         sigma0, alpha, device,
                                                                                         dtype)
         # D+C
-        h_adaptive_1, threshold_adaptive_1, mmd_value_adaptive_1 = TST_MMD_u(S_m, N_per, N1, S_m, sigma_1,sigma0_1,
+        h_adaptive_1, threshold_adaptive_1, mmd_value_adaptive_1 = TST_MMD_u(S_m, N_per, N1, S, sigma_1,sigma0_1,
                                                                                               ep_1, alpha, device,
                                                                                               dtype)
         # Gather results
