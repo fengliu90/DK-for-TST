@@ -107,8 +107,7 @@ for kk in range(K):
     np.random.seed(seed=819 * kk + n)
     y = (torch.cat((torch.zeros(N1, 1), torch.ones(N2, 1)), 0)).squeeze(1).to(device, dtype).long()
     pred, STAT_C2ST_L, model_C2ST_L, w_C2ST_L, b_C2ST_L = C2ST_NN_fit(S, y, N1, x_in, H, x_out, 0.0015,
-                                                                      N_epoch,
-                                                                      batch_size, device, dtype)
+                                                                      N_epoch, batch_size, device, dtype)
     # Train MMD-O
     np.random.seed(seed=1102)
     torch.manual_seed(1102)
