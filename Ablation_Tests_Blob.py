@@ -17,7 +17,7 @@ can be found in https://www.anaconda.com/distribution/#download-section .
 import numpy as np
 import torch
 from sklearn.utils import check_random_state
-from TST_utils import get_item, MatConvert, MMDu_linear_kernel, TST_MMD_u_linear_kernel,Pdist2, MMDu, TST_MMD_adaptive_bandwidth, TST_MMD_u, TST_ME, TST_SCF,C2ST_NN_fit,TST_LCE
+from utils import get_item, MatConvert, MMDu_linear_kernel, TST_MMD_u_linear_kernel,Pdist2, MMDu, TST_MMD_adaptive_bandwidth, TST_MMD_u, TST_ME, TST_SCF,C2ST_NN_fit,TST_LCE
 
 def sample_blobs(n, rows=3, cols=3, sep=1, rs=None):
     """Generate Blob-S for testing type-I error."""
