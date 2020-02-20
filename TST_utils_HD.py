@@ -586,7 +586,6 @@ def TST_LCE_D(S,N1,N_per,alpha,discriminator,device,dtype):
     torch.cuda.manual_seed(1102)
     N = S.shape[0]
     f = torch.nn.Softmax()
-    # if for deep ME output = discriminator(S)[0], otherwise:
     output = discriminator(S)
     # pred_C2ST = output.max(1, keepdim=True)[1]
     STAT = abs(output[:N1,0].type(torch.FloatTensor).mean() - output[N1:,0].type(torch.FloatTensor).mean())
