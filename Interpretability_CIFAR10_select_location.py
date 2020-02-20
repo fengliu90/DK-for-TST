@@ -24,7 +24,7 @@ from torch.autograd import Variable
 import torch.nn as nn
 import torch
 import matplotlib.pyplot as plt
-from TST_utils_HD import compute_ME_stat, MatConvert, MMDu, TST_ME_DK_per
+from utils_HD import compute_ME_stat, MatConvert, MMDu, TST_ME_DK_per
 
 # Setup seeds
 os.makedirs("images", exist_ok=True)

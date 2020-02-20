@@ -27,7 +27,7 @@ import torch.nn as nn
 import torch
 from PIL import Image
 import numpy as np
-from TST_utils_HD import compute_ME_stat, MatConvert, MMDu, TST_ME, TST_ME_DK_per
+from utils_HD import compute_ME_stat, MatConvert, MMDu, TST_ME, TST_ME_DK_per
 
 # Setup seeds
 os.makedirs("images", exist_ok=True)
