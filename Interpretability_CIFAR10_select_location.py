@@ -186,9 +186,9 @@ for kk in range(K):
     # Initialize parameters
     epsilonOPT = torch.log(MatConvert(np.random.rand(1) * 10 ** (-10), device, dtype))
     epsilonOPT.requires_grad = True
-    sigmaOPT = MatConvert(np.ones(1) * np.sqrt(2 * 32 * 32), device, dtype)  # d = 3,5 ??
+    sigmaOPT = MatConvert(np.ones(1) * np.sqrt(2 * 32 * 32), device, dtype)
     sigmaOPT.requires_grad = True
-    sigma0OPT = MatConvert(np.ones(1) * np.sqrt(0.005), device, dtype) # 0.005
+    sigma0OPT = MatConvert(np.ones(1) * np.sqrt(0.005), device, dtype)
     sigma0OPT.requires_grad = True
     TT_org = MatConvert(np.random.randn(J,3,64,64), device, dtype)
     TT_org.requires_grad = True
@@ -338,7 +338,7 @@ for kk in range(K):
         # Fetch test data
         np.random.seed(seed=1102 * (k + 1) + N1)
         data_all_te = data_all[Ind_te]
-        N_te = 1000#len(data_trans)-N1
+        N_te = 1000
         Ind_N_te = np.random.choice(len(Ind_te), N_te, replace=False)
         s1 = data_all_te[Ind_N_te]
         s2 = data_trans[Ind_te_v4[:N_te]]
@@ -351,7 +351,7 @@ for kk in range(K):
                     T_org.view(J, -1), alpha, sigma, sigma0_u, ep)
 
         count_u = count_u + h_u
-        print("MMD-DK:", count_u, "MMD-OPT:", count_adp, "MMD-ME:", count_ME, "SCF:", count_SCF, "C2ST: ", count_C2ST)
+        print("DKME:", count_u)
         H_u[k] = h_u
         T_u[k] = threshold_u
         M_u[k] = mmd_value_u
@@ -362,7 +362,7 @@ for kk in range(K):
 
 # Print test locations obtain by deep-kernel ME (STL, select test location)
 for ii in range(10):
-    T0 = np.transpose(T_org_OPT[ii], (1, 2, 0))
+    T0 = np.transpose(T_org_OPT[ii,0].detach().numpy(), (1, 2, 0))
     fig = plt.imshow(T0)
     fig.set_cmap('hot')
     plt.axis('off')

@@ -428,7 +428,7 @@ for ii in range(10):
 
 # Print test locations obtain by deep-kernel ME
 for ii in range(10):
-    T0 = np.transpose(T_org_OPT[ii,0],(1,2,0)) # convert 3*64*64 to 64*64*3
+    T0 = np.transpose(T_org_OPT[ii,0].detach().numpy(),(1,2,0)) # convert 3*64*64 to 64*64*3
     img = Image.fromarray(T0, 'RGB')
     img.save('T_locs_CIFAR10_DKME_'+str(ii)+'.png')
 
