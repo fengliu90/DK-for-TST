@@ -41,7 +41,7 @@ parser.add_argument("--batch_size", type=int, default=100, help="size of the bat
 parser.add_argument("--lr", type=float, default=0.0002, help="adam: learning rate")
 parser.add_argument("--img_size", type=int, default=64, help="size of each image dimension")
 parser.add_argument("--channels", type=int, default=3, help="number of image channels")
-parser.add_argument("--N1", type=int, default=1000, help="number of samples")
+parser.add_argument("--n", type=int, default=1000, help="number of samples")
 opt = parser.parse_args()
 print(opt)
 dtype = torch.float
