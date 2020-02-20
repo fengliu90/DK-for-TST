@@ -5,6 +5,11 @@ Hi, this is the pytorch code for MMD with deep kernel.
 # Software version
 Torch version is 1.1.0. Python version is 3.7.3. CUDA version is 10.1.
 
+Most codes require freqopttest repo (interpretable nonparametric two-sample test)
+to implement ME and SCF tests, which can be installed by
+
+pip install git+https://github.com/wittawatj/interpretable-test
+
 # For Blob dataset,
 
 1) run
