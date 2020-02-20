@@ -129,7 +129,7 @@ class Featurizer(nn.Module):
         return feature
 
 # Configure data loader
-dataset_test = datasets.CIFAR10(root='./data/cifar10', download=False,train=False,
+dataset_test = datasets.CIFAR10(root='./data/cifar10', download=True,train=False,
                            transform=transforms.Compose([
                                transforms.Resize(opt.img_size),
                                transforms.ToTensor(),
