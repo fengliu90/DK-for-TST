@@ -26,7 +26,7 @@ from torch.autograd import Variable
 import torch.nn as nn
 import torch
 import pickle
-from TST_utils_HD import MatConvert, Pdist2, MMDu, TST_MMD_adaptive_bandwidth, TST_MMD_u, MMDu_linear_kernel, TST_MMD_u_linear_kernel
+from utils_HD import MatConvert, Pdist2, MMDu, TST_MMD_adaptive_bandwidth, TST_MMD_u, MMDu_linear_kernel, TST_MMD_u_linear_kernel
 
 # Setup seeds
 os.makedirs("images", exist_ok=True)
@@ -40,7 +40,7 @@ is_cuda = True
 parser = argparse.ArgumentParser()
 parser.add_argument("--n_epochs", type=int, default=2000, help="number of epochs of training")
 parser.add_argument("--batch_size", type=int, default=100, help="size of the batches")
-parser.add_argument("--lr", type=float, default=0.0002, help="adam: learning rate for C2STs")
+parser.add_argument("--lr", type=float, default=0.0002, help="adam: learning rate")
 parser.add_argument("--img_size", type=int, default=32, help="size of each image dimension")
 parser.add_argument("--channels", type=int, default=1, help="number of image channels")
 parser.add_argument("--n", type=int, default=200, help="number of samples in one set")
@@ -166,7 +166,7 @@ for kk in range(K):
     torch.manual_seed(kk * 19 + N1)
     torch.cuda.manual_seed(kk * 19 + N1)
     np.random.seed(seed=1102 * (kk + 10) + N1)
-    # Initialize deep networks for MMD-D (called featurizer), C2ST-S and C2ST-L (called discriminator)
+    # Initialize deep networks for L+J and G+J (called featurizer), G+C and D+C (called discriminator)
     featurizer = Featurizer()
     discriminator = Discriminator()
     featurizer_linear_kernel = Featurizer()
@@ -206,6 +206,10 @@ for kk in range(K):
     ind_te = np.delete(ind_all,ind_tr)
     Fake_MNIST_tr = torch.from_numpy(Fake_MNIST[0][ind_tr])
     Fake_MNIST_te = torch.from_numpy(Fake_MNIST[0][ind_te])
+    # REPLACE above 6 lines with
+    # Fake_MNIST_tr = data_all[ind_M_tr_all[N1:]]
+    # Fake_MNIST_te = data_all[ind_M_te]
+    # for validating type-I error
 
     # Initialize optimizers
     optimizer_F = torch.optim.Adam(list(featurizer.parameters()) + [epsilonOPT] + [sigmaOPT] + [sigma0OPT], lr=opt.lr)

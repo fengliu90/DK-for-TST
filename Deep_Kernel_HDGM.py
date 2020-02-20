@@ -15,7 +15,7 @@ import numpy as np
 import torch
 import argparse
 parser = argparse.ArgumentParser()
-from TST_utils_HD import MatConvert, MMDu, TST_MMD_u
+from utils_HD import MatConvert, MMDu, TST_MMD_u
 
 class ModelLatentF(torch.nn.Module):
     """Latent space for both domains."""
@@ -85,6 +85,7 @@ J_star_adp = np.zeros([N_epoch])
 ep_OPT = np.zeros([K])
 s_OPT = np.zeros([K])
 s0_OPT = np.zeros([K])
+
 # Repeat experiments K times (K = 10) and report average test power (rejection rate)
 for kk in range(K):
     torch.manual_seed(kk * 19 + n)
@@ -111,7 +112,10 @@ for kk in range(K):
         s1[n * (i):n * (i + 1), :] = np.random.multivariate_normal(mu_mx[i], sigma_mx_1, n)
     for i in range(Num_clusters):
         np.random.seed(seed=819*kk + 1 + i + n)
-        s2[n * (i):n * (i + 1), :] = np.random.multivariate_normal(mu_mx[i], sigma_mx_2[i], n) # sigma_mx_2[i]
+        s2[n * (i):n * (i + 1), :] = np.random.multivariate_normal(mu_mx[i], sigma_mx_2[i], n)
+        # REPLACE above line with
+        # s2[n * (i):n * (i + 1), :] = np.random.multivariate_normal(mu_mx[i], sigma_mx_1, n)
+        # for validating type-I error (s1 ans s2 are from the same distribution)
     if kk==0:
         s1_o = s1
         s2_o = s2
@@ -170,7 +174,10 @@ for kk in range(K):
             s1[n * (i):n * (i + 1), :] = np.random.multivariate_normal(mu_mx[i], sigma_mx_1, n)
         for i in range(Num_clusters):
             np.random.seed(seed=819 * (k + 1) + 2*kk + i + n)
-            s2[n * (i):n * (i + 1), :] = np.random.multivariate_normal(mu_mx[i], sigma_mx_2[i], n) # sigma_mx_2[i]
+            s2[n * (i):n * (i + 1), :] = np.random.multivariate_normal(mu_mx[i], sigma_mx_2[i], n)
+            # REPLACE above line with
+            # s2[n * (i):n * (i + 1), :] = np.random.multivariate_normal(mu_mx[i], sigma_mx_1, n)
+            # for validating type-I error (s1 ans s2 are from the same distribution)
         S = np.concatenate((s1, s2), axis=0)
         S = MatConvert(S, device, dtype)
         # Run two sample test (deep kernel) on generated data

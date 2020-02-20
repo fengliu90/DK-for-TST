@@ -130,6 +130,9 @@ for n in n_list:
         # Generate Blob-D
         np.random.seed(seed=112 * kk + 1 + n)
         s1, s2 = sample_blobs_Q(N1, sigma_mx_2)
+        # REPLACE above line with
+        # s1,s2 = sample_blobs(N1)
+        # for validating type-I error (s1 ans s2 are from the same distribution)
         if kk == 0:
             s1_o = s1
             s2_o = s2
@@ -207,6 +210,9 @@ for n in n_list:
             # Generate Blob-D
             np.random.seed(seed=11 * k + 10 + n)
             s1, s2 = sample_blobs_Q(N1, sigma_mx_2)
+            # REPLACE above line with
+            # s1,s2 = sample_blobs(N1)
+            # for validating type-I error (s1 ans s2 are from the same distribution)
             S = np.concatenate((s1, s2), axis=0)
             S = MatConvert(S, device, dtype)
             # Run two sample tests (baselines) on generated data

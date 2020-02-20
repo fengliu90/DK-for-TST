@@ -19,7 +19,7 @@ import torch
 import pickle
 import argparse
 parser = argparse.ArgumentParser()
-from TST_utils_HD import MatConvert, Pdist2, MMDu, get_item, TST_MMD_adaptive_bandwidth, TST_MMD_u, C2ST_NN_fit, MMDu_linear_kernel, TST_MMD_u_linear_kernel
+from utils_HD import MatConvert, Pdist2, MMDu, get_item, TST_MMD_adaptive_bandwidth, TST_MMD_u, C2ST_NN_fit, MMDu_linear_kernel, TST_MMD_u_linear_kernel
 
 class ModelLatentF(torch.nn.Module):
     """Latent space for both domains."""
@@ -82,6 +82,13 @@ N_f = 100.0 # number of test sets (float)
 data = pickle.load(open('./HIGGS_TST.pckl', 'rb'))
 dataX = data[0]
 dataY = data[1]
+# REPLACE above two lines with
+# dataX = data[0]
+# dataY = data[0]
+# or
+# dataX = data[1]
+# dataY = data[1]
+# for validating type-I error
 del data
 
 # Naming variables

@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import torchvision # use it for torch.utils.data
 import freqopttest.data as data
 import freqopttest.tst as tst
 import scipy.stats as stats
@@ -150,7 +151,7 @@ def C2ST_NN_fit(S,y,N1,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size,device
     ind = np.random.choice(N, N, replace=False)
     tr_ind = ind[:np.int(np.ceil(N * 1))]
     te_ind = tr_ind
-    dataset = torch.utils.data.TensorDataset(S[tr_ind,:], y[tr_ind])
+    dataset = torch.utils.data.TensorDataset(S[tr_ind, :], y[tr_ind])
     dataloader_C2ST = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
     len_dataloader = len(dataloader_C2ST)
     for epoch in range(N_epoch):
@@ -170,7 +171,7 @@ def C2ST_NN_fit(S,y,N1,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size,device
         if epoch % 100 == 0:
             print(criterion(model_C2ST(S).mm(w_C2ST) + b_C2ST, y).item())
 
-    output = f(model_C2ST(S[te_ind,:]).mm(w_C2ST) + b_C2ST)
+    output = f(model_C2ST(S[te_ind, :]).mm(w_C2ST) + b_C2ST)
     pred = output.max(1, keepdim=True)[1]
     STAT_C2ST = abs(pred[:N1].type(torch.FloatTensor).mean() - pred[N1:].type(torch.FloatTensor).mean())
     return pred, STAT_C2ST, model_C2ST, w_C2ST, b_C2ST
@@ -232,7 +233,6 @@ def mmd2_permutations(K, n_X, permutations=200):
     rest = ests[:-1]
     p_val = (rest > est).float().mean()
     return est.item(), p_val.item(), rest
-
 
 def TST_MMD_adaptive_bandwidth(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha, device, dtype):
     """run two-sample test (TST) using ordinary Gaussian kernel."""
@@ -472,7 +472,7 @@ def TST_LCE_D(S,N1,N_per,alpha,discriminator,device,dtype):
     torch.cuda.manual_seed(1102)
     N = S.shape[0]
     f = torch.nn.Softmax()
-    output = discriminator(S)[0]
+    output = discriminator(S)
     STAT = abs(output[:N1,0].type(torch.FloatTensor).mean() - output[N1:,0].type(torch.FloatTensor).mean())
     STAT_vector = np.zeros(N_per)
     for r in range(N_per):

@@ -26,7 +26,7 @@ from torch.autograd import Variable
 import torch.nn as nn
 import torch
 import pickle
-from TST_utils_HD import MatConvert, Pdist2, MMDu, TST_MMD_adaptive_bandwidth, TST_MMD_u, TST_ME, TST_SCF, TST_C2ST_D, TST_LCE_D
+from utils_HD import MatConvert, Pdist2, MMDu, TST_MMD_adaptive_bandwidth, TST_MMD_u, TST_ME, TST_SCF, TST_C2ST_D, TST_LCE_D
 
 # Setup seeds
 os.makedirs("images", exist_ok=True)
@@ -205,6 +205,10 @@ for kk in range(K):
     ind_te = np.delete(ind_all,ind_tr)
     Fake_MNIST_tr = torch.from_numpy(Fake_MNIST[0][ind_tr])
     Fake_MNIST_te = torch.from_numpy(Fake_MNIST[0][ind_te])
+    # REPLACE above 6 lines with
+    # Fake_MNIST_tr = data_all[ind_M_tr_all[N1:]]
+    # Fake_MNIST_te = data_all[ind_M_te]
+    # for validating type-I error
 
     # Initialize optimizers
     optimizer_F = torch.optim.Adam(list(featurizer.parameters()) + [epsilonOPT] + [sigmaOPT] + [sigma0OPT], lr=0.001)
@@ -247,10 +251,6 @@ for kk in range(K):
                 TEMP = MMDu(modelu_output, imgs.shape[0], X.view(X.shape[0],-1), sigma, sigma0_u, ep)
                 mmd_value_temp = -1 * (TEMP[0])
                 mmd_std_temp = torch.sqrt(TEMP[1] + 10 ** (-8))
-                if mmd_std_temp.item() == 0:
-                    print('error std!!')
-                if np.isnan(mmd_std_temp.item()):
-                    print('error mmd!!')
                 STAT_u = torch.div(mmd_value_temp, mmd_std_temp)
                 # Compute gradient
                 STAT_u.backward()
@@ -262,7 +262,6 @@ for kk in range(K):
                 # ------------------------------------------
                 # Initialize optimizer
                 optimizer_D.zero_grad()
-
                 # Compute Cross-Entropy (loss_C) loss between two samples
                 loss_C = adversarial_loss(discriminator(X), Y)
                 # Compute gradient
@@ -308,7 +307,6 @@ for kk in range(K):
         STAT_adaptive = torch.div(mmd_value_tempa, mmd_std_tempa)
         optimizer_sigma0.zero_grad()
         STAT_adaptive.backward(retain_graph=True)
-        # Update sigma0 using gradient descent
         optimizer_sigma0.step()
         if t % 100 == 0:
             print("mmd: ", -1 * mmd_value_tempa.item(), "mmd_std: ", mmd_std_tempa.item(), "Statistic: ",

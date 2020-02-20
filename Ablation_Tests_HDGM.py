@@ -18,7 +18,7 @@ import numpy as np
 import torch
 import argparse
 parser = argparse.ArgumentParser()
-from TST_utils_HD import MatConvert, Pdist2, MMDu, get_item, TST_MMD_adaptive_bandwidth, TST_MMD_u, TST_ME, TST_SCF, TST_C2ST, C2ST_NN_fit, MMDu_linear_kernel, TST_MMD_u_linear_kernel,TST_LCE
+from utils_HD import MatConvert, Pdist2, MMDu, get_item, TST_MMD_adaptive_bandwidth, TST_MMD_u, C2ST_NN_fit, MMDu_linear_kernel, TST_MMD_u_linear_kernel
 
 class ModelLatentF(torch.nn.Module):
     """Latent space for both domains."""
@@ -71,10 +71,11 @@ ep = 10**(-10)
 sigma0_u = 0.1/5
 learning_rate = 0.00005
 learning_ratea = 0.00005
+learning_rateLJ = 0.0001
 learning_rate_C2ST = 0.001
-batch_size = min(n * 2, 128) # batch size for training C2ST-L and C2ST-S
-N_epoch_C = 1000 # number of epochs for training C2ST-L and C2ST-S
-N_epoch = 1000 # number of epochs for training MMD-O
+batch_size = min(n * 2, 128) # batch size for training deep networks for G+C and D+C
+N_epoch_C = 1000 # number of epochs for training deep networks for G+C and D+C
+N_epoch = 1000 # number of epochs for training L+J and G+J
 K = 10 # number of trails
 N = 100 # # number of test sets
 N_f = 100.0 # number of test sets (float)
@@ -112,7 +113,7 @@ for kk in range(K):
         model_u = ModelLatentF(x_in, H, x_out)
         model_u1 = ModelLatentF(x_in, H, x_out)
     # Setup optimizer for training deep kernels (L+J and G+J)
-    optimizer_u = torch.optim.Adam(list(model_u.parameters()), lr=learning_rate)
+    optimizer_u = torch.optim.Adam(list(model_u.parameters()), lr=learning_rateLJ)
     optimizer_u1 = torch.optim.Adam(list(model_u1.parameters()), lr=learning_rate)
 
     # Generate HDGM-D
@@ -122,6 +123,9 @@ for kk in range(K):
     for i in range(Num_clusters):
         np.random.seed(seed=819*kk + 1 + i + n)
         s2[n * (i):n * (i + 1), :] = np.random.multivariate_normal(mu_mx[i], sigma_mx_2[i], n)
+        # REPLACE above line with
+        # s2[n * (i):n * (i + 1), :] = np.random.multivariate_normal(mu_mx[i], sigma_mx_1, n)
+        # for validating type-I error (s1 ans s2 are from the same distribution)
     if kk==0:
         s1_o = s1
         s2_o = s2
@@ -275,6 +279,9 @@ for kk in range(K):
         for i in range(Num_clusters):
             np.random.seed(seed=819 * (k + 1) + 2*kk + i + n)
             s2[n * (i):n * (i + 1), :] = np.random.multivariate_normal(mu_mx[i], sigma_mx_2[i], n)
+            # REPLACE above line with
+            # s2[n * (i):n * (i + 1), :] = np.random.multivariate_normal(mu_mx[i], sigma_mx_1, n)
+            # for validating type-I error (s1 ans s2 are from the same distribution)
         S = np.concatenate((s1, s2), axis=0)
         S = MatConvert(S, device, dtype)
         # Run two sample tests (baselines) on generated data
