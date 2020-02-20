@@ -10,7 +10,7 @@ to implement ME and SCF tests, which can be installed by
 
 pip install git+https://github.com/wittawatj/interpretable-test
 
-These python files (14 in total), of cause, require some basic scientific computing python packages, e.g., numpy, sklearn and matplotlib. I recommend users to install python via Anaconda (python 3.7.3), which can be downloaded from https://www.anaconda.com/distribution/#download-section . If you install Anaconda, you do not need to worry about these basic packages.
+These python files (14 in total), of cause, require some basic scientific computing python packages, e.g., numpy, sklearn and matplotlib. I recommend users to install python via Anaconda (python 3.7.3), which can be downloaded from https://www.anaconda.com/distribution/#download-section . If you have installed Anaconda, then you do not need to worry about these basic packages.
 
 After you install anaconda, pytorch (gpu) and freqopttest, you can run codes related to Bolb, HDGM and CIFAR10 (9 python files) successfully. For the other codes (5 python files), you need to download the following data.
 
