@@ -1,3 +1,4 @@
+
 import numpy as np
 import torch
 import torch.utils.data
@@ -7,7 +8,8 @@ import freqopttest.tst as tst
 is_cuda = True
 
 class ModelLatentF(torch.nn.Module):
-    """define deep networks."""
+    """Latent space for both domains."""
+
     def __init__(self, x_in, H, x_out):
         """Init latent features."""
         super(ModelLatentF, self).__init__()
@@ -16,19 +18,21 @@ class ModelLatentF(torch.nn.Module):
         self.latent = torch.nn.Sequential(
             torch.nn.Linear(x_in, H, bias=True),
             torch.nn.Softplus(),
-            torch.nn.Linear(H, H, bias=True),
+            torch.nn.Linear(H, H, bias=True),  # +1 for high test power
             torch.nn.Softplus(),
             torch.nn.Linear(H, H, bias=True),
             torch.nn.Softplus(),
+            # torch.nn.Linear(H, H, bias=True),
+            # torch.nn.ReLU(),
             torch.nn.Linear(H, x_out, bias=True),
         )
+
     def forward(self, input):
         """Forward the LeNet."""
         fealant = self.latent(input)
         return fealant
 
 def get_item(x, is_cuda):
-    """get the numpy value from a torch tensor."""
     if is_cuda:
         x = x.cpu().detach().numpy()
     else:
@@ -36,33 +40,60 @@ def get_item(x, is_cuda):
     return x
 
 def MatConvert(x, device, dtype):
-    """convert the numpy to a torch tensor."""
     x = torch.from_numpy(x).to(device, dtype)
     return x
 
+
 def Pdist2(x, y):
-    """compute the paired distance between x and y."""
     x_norm = (x ** 2).sum(1).view(-1, 1)
     if y is not None:
         y_norm = (y ** 2).sum(1).view(1, -1)
     else:
         y = x
         y_norm = x_norm.view(1, -1)
+
     Pdist = x_norm + y_norm - 2.0 * torch.mm(x, torch.transpose(y, 0, 1))
+    # Pdist = Pdist - torch.diag(Pdist.diag())
     Pdist[Pdist<0]=0
     return Pdist
 
+
+def guassian_kernel(Fea, len_s, is_median = False):  # , kernel_mul=2.0, kernel_num=5, fix_sigma=None
+    #    FeaALL = torch.cat([FeaS,FeaT],0)
+    L2_distance = Pdist2(Fea, Fea)
+    if is_median:
+        L2D = L2_distance[0:len_s-1,len_s:Fea.size(0)]
+        diss = L2D[L2D != 0]
+        bandwidth = diss.median()
+        kernel_val = torch.exp(-L2_distance /bandwidth)
+    else:
+        kernel_val = torch.exp(-L2_distance / 0.1)
+    return kernel_val
+
+
+def MyMMD(Fea, LM, len_s, is_median = False):  # , kernel_mul=2.0, kernel_num=5, fix_sigma=None
+    kernels = guassian_kernel(Fea, len_s, is_median)
+    loss = 0
+    loss = kernels.mm(LM).trace()
+    return loss
+
+
 def h1_mean_var_gram(Kx, Ky, Kxy, is_var_computed, use_1sample_U=True):
-    """compute value of MMD and std of MMD using kernel matrix."""
+    """
+    Same as h1_mean_var() but takes in Gram matrices directly.
+    """
+
     Kxxy = torch.cat((Kx,Kxy),1)
     Kyxy = torch.cat((Kxy.transpose(0,1),Ky),1)
     Kxyxy = torch.cat((Kxxy,Kyxy),0)
+
     nx = Kx.shape[0]
     ny = Ky.shape[0]
     is_unbiased = True
     if is_unbiased:
         xx = torch.div((torch.sum(Kx) - torch.sum(torch.diag(Kx))), (nx * (nx - 1)))
         yy = torch.div((torch.sum(Ky) - torch.sum(torch.diag(Ky))), (ny * (ny - 1)))
+
         # one-sample U-statistic.
         if use_1sample_U:
             xy = torch.div((torch.sum(Kxy) - torch.sum(torch.diag(Kxy))), (nx * (ny - 1)))
@@ -72,74 +103,162 @@ def h1_mean_var_gram(Kx, Ky, Kxy, is_var_computed, use_1sample_U=True):
     else:
         xx = torch.div((torch.sum(Kx)), (nx * nx))
         yy = torch.div((torch.sum(Ky)), (ny * ny))
+
         # one-sample U-statistic.
         if use_1sample_U:
             xy = torch.div((torch.sum(Kxy)), (nx * ny))
         else:
             xy = torch.div(torch.sum(Kxy), (nx * ny))
         mmd2 = xx - 2 * xy + yy
+
     if not is_var_computed:
         return mmd2, None
 
     hh = Kx+Ky-Kxy-Kxy.transpose(0,1)
     V1 = torch.dot(hh.sum(1)/ny,hh.sum(1)/ny) / ny
+    # V2 = (hh - torch.diag(torch.diag(hh))).sum() / (nx-1) / nx
     V2 = (hh).sum() / (nx) / nx
     varEst = 4*(V1 - V2**2)
     if  varEst == 0.0:
         print('error!!'+str(V1))
+    ## unbiased var
+    # hh = hh - torch.diag(torch.diag(hh))
+    # # V1_t = torch.einsum('ij,in->ijn',[hh,hh])
+    # # V1_diags = torch.einsum('...ii->...i', V1_t)
+    # V1 = (torch.dot(hh.sum(1),hh.sum(1)) - (hh**2).sum())*6.0/ny/(ny-1)/(ny-2)/2.0
+    # # V2_t = torch.einsum('ij,mn->ijmn', [hh, hh])
+    # # V2_diags = torch.einsum('ijij->ij', V2_t)
+    # V2 = (hh.sum()*hh.sum() - (hh**2).sum()) * 24.0 / ny / (ny - 1) / (ny - 2) / (ny - 3) /2.0
+    # print(V1,V2)
+    # varEst = 4 * (V1 - V2)
     return mmd2, varEst, Kxyxy
 
-def MMDu(Fea, len_s, Fea_org, sigma, sigma0=0.1, epsilon=10 ** (-10), is_smooth=True, is_var_computed=True, use_1sample_U=True):
-    """compute value of deep-kernel MMD and std of deep-kernel MMD using merged data."""
-    X = Fea[0:len_s, :] # fetch the sample 1 (features of deep networks)
-    Y = Fea[len_s:, :] # fetch the sample 2 (features of deep networks)
-    X_org = Fea_org[0:len_s, :] # fetch the original sample 1
-    Y_org = Fea_org[len_s:, :] # fetch the original sample 2
-    L = 1 # generalized Gaussian (if L>1)
+
+def MMDu(Fea, len_s, Fea_org, sigma, sigma0=0.1, epsilon=10 ** (-10), is_smooth=True, is_mixture=False, beta=None, is_var_computed=True, use_1sample_U=True):
+    """
+    X: nxd numpy array
+    Y: nxd numpy array
+    k: a Kernel object
+    is_var_computed: if True, compute the variance. If False, return None.
+    use_1sample_U: if True, use one-sample U statistic for the cross term
+      i.e., k(X, Y).
+
+    Code based on Arthur Gretton's Matlab implementation for
+    Bounliphone et. al., 2016.
+
+    return (MMD^2, var[MMD^2]) under H1
+    """
+    X = Fea[0:len_s, :]
+    Y = Fea[len_s:, :]
+    X_org = Fea_org[0:len_s, :]
+    Y_org = Fea_org[len_s:, :]
+    # epsilon = 0.5#10 ** (-10)
+    L = 1
+
+    nx = X.shape[0]
+    ny = Y.shape[0]
     Dxx = Pdist2(X, X)
     Dyy = Pdist2(Y, Y)
     Dxy = Pdist2(X, Y)
     Dxx_org = Pdist2(X_org, X_org)
     Dyy_org = Pdist2(Y_org, Y_org)
     Dxy_org = Pdist2(X_org, Y_org)
-    if is_smooth:
-        Kx = (1-epsilon) * torch.exp(-(Dxx / sigma0) - (Dxx_org / sigma))**L + epsilon * torch.exp(-Dxx_org / sigma)
-        Ky = (1-epsilon) * torch.exp(-(Dyy / sigma0) - (Dyy_org / sigma))**L + epsilon * torch.exp(-Dyy_org / sigma)
-        Kxy = (1-epsilon) * torch.exp(-(Dxy / sigma0) - (Dxy_org / sigma))**L + epsilon * torch.exp(-Dxy_org / sigma)
+    if is_mixture:
+        if is_smooth:
+            Kx = torch.exp(-Dxx / sigma0 - Dxx_org / sigma)
+            Ky = torch.exp(-Dyy / sigma0 - Dyy_org / sigma)
+            Kxy = torch.exp(-Dxy / sigma0 - Dxy_org / sigma)
+        else:
+            Kx = torch.exp(-Dxx / sigma0)
+            Ky = torch.exp(-Dyy / sigma0)
+            Kxy = torch.exp(-Dxy / sigma0)
     else:
-        Kx = torch.exp(-Dxx / sigma0)
-        Ky = torch.exp(-Dyy / sigma0)
-        Kxy = torch.exp(-Dxy / sigma0)
+        if is_smooth:
+            Kx = (1-epsilon) * torch.exp(-(Dxx / sigma0) - (Dxx_org / sigma))**L + epsilon * torch.exp(-Dxx_org / sigma)
+            Ky = (1-epsilon) * torch.exp(-(Dyy / sigma0) - (Dyy_org / sigma))**L + epsilon * torch.exp(-Dyy_org / sigma)
+            Kxy = (1-epsilon) * torch.exp(-(Dxy / sigma0) - (Dxy_org / sigma))**L + epsilon * torch.exp(-Dxy_org / sigma)
+        else:
+            Kx = torch.exp(-Dxx / sigma0)
+            Ky = torch.exp(-Dyy / sigma0)
+            Kxy = torch.exp(-Dxy / sigma0)
+
     return h1_mean_var_gram(Kx, Ky, Kxy, is_var_computed, use_1sample_U)
 
 def MMDu_linear_kernel(Fea, len_s, is_var_computed=True, use_1sample_U=True):
-    """compute value of (deep) lineaer-kernel MMD and std of (deep) lineaer-kernel MMD using merged data."""
+    """
+    X: nxd numpy array
+    Y: nxd numpy array
+    k: a Kernel object
+    is_var_computed: if True, compute the variance. If False, return None.
+    use_1sample_U: if True, use one-sample U statistic for the cross term
+      i.e., k(X, Y).
+
+    Code based on Arthur Gretton's Matlab implementation for
+    Bounliphone et. al., 2016.
+
+    return (MMD^2, var[MMD^2]) under H1
+    """
     try:
         X = Fea[0:len_s, :]
         Y = Fea[len_s:, :]
     except:
         X = Fea[0:len_s].unsqueeze(1)
         Y = Fea[len_s:].unsqueeze(1)
+
     Kx = X.mm(X.transpose(0,1))
     Ky = Y.mm(Y.transpose(0,1))
     Kxy = X.mm(Y.transpose(0,1))
+
     return h1_mean_var_gram(Kx, Ky, Kxy, is_var_computed, use_1sample_U)
 
+
+def MMD_L(N1, N2, device, dtype):  # , kernel_mul=2.0, kernel_num=5, fix_sigma=None
+    Lii = torch.ones(N1, N1, device=device, dtype=dtype) / N1 / N1
+    Ljj = torch.ones(N2, N2, device=device, dtype=dtype) / N2 / N2
+    Lij = -1 * torch.ones(N1, N2, device=device, dtype=dtype) / N1 / N2
+    Lu = torch.cat([Lii, Lij], 1)
+    Ll = torch.cat([Lij.transpose(0, 1), Ljj], 1)
+    LM = torch.cat([Lu, Ll], 0)
+    return LM
+
+def TST_MMD_median(Fea, N_per, LM, N1, alpha, device, dtype):
+    mmd_vector = np.zeros(N_per)
+    mmd_value = get_item(MyMMD(Fea, LM, N1, is_median = True),is_cuda)
+    count = 0
+    Fea = get_item(Fea,is_cuda)
+    for i in range(N_per):
+        Fea_per = np.random.permutation(Fea)
+        Fea_per = MatConvert(Fea_per, device, dtype)
+        mmd_vector[i] = get_item(MyMMD(Fea_per, LM, N1, is_median = True),is_cuda)
+        if mmd_vector[i] > mmd_value:
+            count = count + 1
+        if count > np.ceil(N_per * alpha):
+            h = 0
+            threshold = "NaN"
+            break
+        else:
+            h = 1
+    if h == 1:
+        S_mmd_vector = np.sort(mmd_vector)
+        #        print(np.int(np.ceil(N_per*alpha)))
+        threshold = S_mmd_vector[np.int(np.ceil(N_per * (1 - alpha)))]
+    return h, threshold, mmd_value.item()
+
 def mmd2_permutations(K, n_X, permutations=500):
-    """
-        Fast implementation of permutations using kernel matrix.
-    """
     K = torch.as_tensor(K)
     n = K.shape[0]
     assert K.shape[0] == K.shape[1]
     n_Y = n_X
     assert n == n_X + n_Y
+
     w_X = 1
     w_Y = -1
+
     ws = torch.full((permutations + 1, n), w_Y, dtype=K.dtype, device=K.device)
     ws[-1, :n_X] = w_X
     for i in range(permutations):
         ws[i, torch.randperm(n)[:n_X].numpy()] = w_X
+
     biased_ests = torch.einsum("pi,ij,pj->p", ws, K, ws)
     if True:  # u-stat estimator
         # need to subtract \sum_i k(X_i, X_i) + k(Y_i, Y_i) + 2 k(X_i, Y_i)
@@ -151,20 +270,23 @@ def mmd2_permutations(K, n_X, permutations=500):
         cross_terms = K.take(Y_inds * n + X_inds).sum(1)
         del X_inds, Y_inds
         ests = (biased_ests - K.trace() + 2 * cross_terms) / (n_X * (n_X - 1))
+
     est = ests[-1]
     rest = ests[:-1]
     p_val = (rest > est).float().mean()
     return est.item(), p_val.item(), rest
 
 def TST_MMD_adaptive_bandwidth(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha, device, dtype):
-    """run two-sample test (TST) using ordinary Gaussian kernel."""
     mmd_vector = np.zeros(N_per)
+    # mmd_value = MyMMD(Fea, LM, N1).detach().numpy()
     TEMP = MMDu(Fea, N1, Fea_org, sigma, sigma0, is_smooth=False)
     mmd_value = get_item(TEMP[0],is_cuda)
     Kxyxy = TEMP[2]
     count = 0
+    # Fea = get_item(Fea,is_cuda)
     nxy = Fea.shape[0]
     nx = N1
+
     for r in range(N_per):
         # print r
         ind = np.random.choice(nxy, nxy, replace=False)
@@ -194,12 +316,15 @@ def TST_MMD_adaptive_bandwidth(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha, de
     return h, threshold, mmd_value.item()
 
 def TST_MMD_u(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha, device, dtype, epsilon=10 ** (-10),is_smooth=True):
-    """run two-sample test (TST) using deep kernel kernel."""
+    mmd_vector = np.zeros(N_per)
     TEMP = MMDu(Fea, N1, Fea_org, sigma, sigma0, epsilon,is_smooth)
+    mmd_value = get_item(TEMP[0], is_cuda)
     Kxyxy = TEMP[2]
     count = 0
+    # Fea = get_item(Fea, is_cuda)
     nxy = Fea.shape[0]
     nx = N1
+
     mmd_value_nn, p_val, rest = mmd2_permutations(Kxyxy, nx, permutations=200)
     if p_val > alpha:
         h = 0
@@ -208,15 +333,44 @@ def TST_MMD_u(Fea, N_per, N1, Fea_org, sigma, sigma0, alpha, device, dtype, epsi
     threshold = "NaN"
     return h,threshold,mmd_value_nn
 
-def TST_MMD_u_linear_kernel(Fea, N_per, N1, alpha, device, dtype):
-    """run two-sample test (TST) using (deep) lineaer kernel kernel."""
+    # for r in range(N_per):
+    #     # print r
+    #     ind = np.random.choice(nxy, nxy, replace=False)
+    #     # divide into new X, Y
+    #     indx = ind[:nx]
+    #     # print(indx)
+    #     indy = ind[nx:]
+    #     Kx = Kxyxy[np.ix_(indx, indx)]
+    #     # print(Kx)
+    #     Ky = Kxyxy[np.ix_(indy, indy)]
+    #     Kxy = Kxyxy[np.ix_(indx, indy)]
+    #
+    #     TEMP = h1_mean_var_gram(Kx, Ky, Kxy, is_var_computed=False)
+    #     mmd_vector[r] = TEMP[0]
+    #     if mmd_vector[r] > mmd_value:
+    #         count = count + 1
+    #     if count > np.ceil(N_per * alpha):
+    #         h = 0
+    #         threshold = "NaN"
+    #         break
+    #     else:
+    #         h = 1
+    # if h == 1:
+    #     S_mmd_vector = np.sort(mmd_vector)
+    #     #        print(np.int(np.ceil(N_per*alpha)))
+    #     threshold = S_mmd_vector[np.int(np.ceil(N_per * (1 - alpha)))]
+    # return h, threshold, mmd_value.item()
+
+def TST_MMD_u_linear_kernel(Fea, N_per, N1, alpha,  device, dtype):
     mmd_vector = np.zeros(N_per)
     TEMP = MMDu_linear_kernel(Fea, N1)
     mmd_value = get_item(TEMP[0], is_cuda)
     Kxyxy = TEMP[2]
     count = 0
+    # Fea = get_item(Fea, is_cuda)
     nxy = Fea.shape[0]
     nx = N1
+
     for r in range(N_per):
         # print r
         ind = np.random.choice(nxy, nxy, replace=False)
@@ -228,6 +382,7 @@ def TST_MMD_u_linear_kernel(Fea, N_per, N1, alpha, device, dtype):
         # print(Kx)
         Ky = Kxyxy[np.ix_(indy, indy)]
         Kxy = Kxyxy[np.ix_(indx, indy)]
+
         TEMP = h1_mean_var_gram(Kx, Ky, Kxy, is_var_computed=False)
         mmd_vector[r] = TEMP[0]
         if mmd_vector[r] > mmd_value:
@@ -240,11 +395,11 @@ def TST_MMD_u_linear_kernel(Fea, N_per, N1, alpha, device, dtype):
             h = 1
     if h == 1:
         S_mmd_vector = np.sort(mmd_vector)
+        #        print(np.int(np.ceil(N_per*alpha)))
         threshold = S_mmd_vector[np.int(np.ceil(N_per * (1 - alpha)))]
     return h, threshold, mmd_value.item()
 
 def C2ST_NN_fit(S,y,N1,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size,device,dtype):
-    """Train a deep network for C2STs."""
     N = S.shape[0]
     if is_cuda:
         model_C2ST = ModelLatentF(x_in, H, x_out).cuda()
@@ -279,13 +434,13 @@ def C2ST_NN_fit(S,y,N1,x_in,H,x_out,learning_rate_C2ST,N_epoch,batch_size,device
             tt = tt + 1
         if epoch % 100 == 0:
             print(criterion(model_C2ST(S).mm(w_C2ST) + b_C2ST, y).item())
+
     output = f(model_C2ST(S[te_ind,:]).mm(w_C2ST) + b_C2ST)
     pred = output.max(1, keepdim=True)[1]
     STAT_C2ST = abs(pred[:N1].type(torch.FloatTensor).mean() - pred[N1:].type(torch.FloatTensor).mean())
     return pred, STAT_C2ST, model_C2ST, w_C2ST, b_C2ST
 
 def TST_C2ST(S,N1,N_per,alpha,model_C2ST, w_C2ST, b_C2ST,device,dtype):
-    """run C2ST-S."""
     np.random.seed(seed=1102)
     torch.manual_seed(1102)
     torch.cuda.manual_seed(1102)
@@ -304,19 +459,22 @@ def TST_C2ST(S,N1,N_per,alpha,model_C2ST, w_C2ST, b_C2ST,device,dtype):
         STAT_vector[r] = abs(pred_C2ST[ind_X].type(torch.FloatTensor).mean() - pred_C2ST[ind_Y].type(torch.FloatTensor).mean())
     S_vector = np.sort(STAT_vector)
     threshold = S_vector[np.int(np.ceil(N_per * (1 - alpha)))]
+    threshold_lower = S_vector[np.int(np.ceil(N_per *  alpha))]
     h = 0
     if STAT.item() > threshold:
+        h = 1
+    if STAT.item() < threshold_lower:
         h = 1
     return h, threshold, STAT
 
 def TST_LCE(S,N1,N_per,alpha,model_C2ST, w_C2ST, b_C2ST,device,dtype):
-    """run C2ST-L."""
     np.random.seed(seed=1102)
     torch.manual_seed(1102)
     torch.cuda.manual_seed(1102)
     N = S.shape[0]
     f = torch.nn.Softmax()
     output = f(model_C2ST(S).mm(w_C2ST) + b_C2ST)
+    # pred_C2ST = output.max(1, keepdim=True)[1]
     STAT = abs(output[:N1,0].type(torch.FloatTensor).mean() - output[N1:,0].type(torch.FloatTensor).mean())
     STAT_vector = np.zeros(N_per)
     for r in range(N_per):
@@ -328,13 +486,38 @@ def TST_LCE(S,N1,N_per,alpha,model_C2ST, w_C2ST, b_C2ST,device,dtype):
         STAT_vector[r] = abs(output[ind_X,0].type(torch.FloatTensor).mean() - output[ind_Y,0].type(torch.FloatTensor).mean())
     S_vector = np.sort(STAT_vector)
     threshold = S_vector[np.int(np.ceil(N_per * (1 - alpha)))]
+    threshold_lower = S_vector[np.int(np.ceil(N_per *  alpha))]
     h = 0
     if STAT.item() > threshold:
         h = 1
+    # if STAT.item() < threshold_lower:
+    #     h = 1
     return h, threshold, STAT
 
+def TST_MMD_b(Fea, N_per, LM, N1, alpha, device, dtype):
+    mmd_vector = np.zeros(N_per)
+    mmd_value = get_item(MyMMD(Fea, LM, N1),is_cuda)
+    count = 0
+    Fea = get_item(Fea,is_cuda)
+    for i in range(N_per):
+        Fea_per = np.random.permutation(Fea)
+        Fea_per = MatConvert(Fea_per, device, dtype)
+        mmd_vector[i] = get_item(MyMMD(Fea_per, LM, N1),is_cuda)
+        if mmd_vector[i] > mmd_value:
+            count = count + 1
+        if count > np.ceil(N_per * alpha):
+            h = 0
+            threshold = "NaN"
+            break
+        else:
+            h = 1
+    if h == 1:
+        S_mmd_vector = np.sort(mmd_vector)
+        #        print(np.int(np.ceil(N_per*alpha)))
+        threshold = S_mmd_vector[np.int(np.ceil(N_per * (1 - alpha)))]
+    return h, threshold, mmd_value.item()
+
 def TST_ME(Fea, N1, alpha, is_train, test_locs, gwidth, J = 1, seed = 15):
-    """run ME test."""
     Fea = get_item(Fea,is_cuda)
     tst_data = data.TSTData(Fea[0:N1,:], Fea[N1:,:])
     h = 0
@@ -357,7 +540,6 @@ def TST_ME(Fea, N1, alpha, is_train, test_locs, gwidth, J = 1, seed = 15):
         return h
 
 def TST_SCF(Fea, N1, alpha, is_train, test_freqs, gwidth, J = 1, seed = 15):
-    """run ME test."""
     Fea = get_item(Fea,is_cuda)
     tst_data = data.TSTData(Fea[0:N1,:], Fea[N1:,:])
     h = 0
