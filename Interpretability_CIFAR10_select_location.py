@@ -139,7 +139,7 @@ dataset_test = datasets.CIFAR10(root='./data/cifar10', download=False,train=Fals
 dataloader_test = torch.utils.data.DataLoader(dataset_test, batch_size=10000,
                                              shuffle=False, num_workers=1)
 
-dataset_test_org = datasets.CIFAR10(root='./data/cifar10', download=False,train=False, transform=transforms.Compose([transforms.ToTensor()]))
+dataset_test_org = datasets.CIFAR10(root='./data/cifar10', download=True,train=False, transform=transforms.Compose([transforms.ToTensor()]))
 
 dataloader_test_org = torch.utils.data.DataLoader(dataset_test_org, batch_size=10000,
                                              shuffle=False, num_workers=1)
