@@ -1,6 +1,6 @@
 # DK-for-TST
 
-Hi, this is the pytorch code for MMD with deep kernel, presented in the ICML2020 paper "Learning Deep Kernels for Non-Parametric Two-Sample Tests" (https://arxiv.org/abs/2002.09116).
+Hi, this is the pytorch code for MMD with deep kernel, presented in the ICML2020 paper "Learning Deep Kernels for Non-Parametric Two-Sample Tests" (ICML2020) (https://arxiv.org/abs/2002.09116).
 
 # Software version
 Torch version is 1.1.0. Python version is 3.7.3. CUDA version is 10.1.
