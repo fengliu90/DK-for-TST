@@ -165,3 +165,17 @@ python Interpretability_CIFAR10_select_location.py
 you can obtain the best test locations (selected to maximize ME statistic) of deep-kernel ME.
 
 Two codes will draw the best locations as png files.
+
+# Citation
+If you are using this code for your own researching, please consider citing
+```
+@inproceedings{liu2020learning,
+  title={Learning Deep Kernels for Non-Parametric Two-Sample Tests},
+  author={Liu, Feng and Xu, Wenkai and Lu, Jie and Zhang, Guangquan and Gretton, Arthur and Sutherland, Danica J.},
+  booktitle={ICML},
+  year={2020}
+}
+```
+
+# Acknowledgment
+This work was supported by the Australian Research Council under FL190100149 and DP170101632, and by the Gatsby Charitable Foundation. FL, JL and GZ gratefully acknowledge the support of the NVIDIA Corporation with the donation of two NVIDIA TITAN V GPUs for this work. FL also acknowledges the support from UTS-FEIT and UTS-AAII. DJS would like to thank Aram Ebtekar, Ameya Velingker, and Siddhartha Jain for productive discussions.
