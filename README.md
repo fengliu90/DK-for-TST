@@ -1,6 +1,14 @@
-# DK-for-TST
+# Learning deep kernels for two-sample testing
 
-Hi, this is the pytorch code for MMD with deep kernel, presented in the ICML2020 paper "Learning Deep Kernels for Non-Parametric Two-Sample Tests" (ICML2020) (https://arxiv.org/abs/2002.09116).
+Hi, this is the pytorch code for MMD with deep kernel, presented in the ICML2020 paper "Learning Deep Kernels for Non-Parametric Two-Sample Tests" (ICML2020) (https://arxiv.org/abs/2002.09116). This work is done by 
+
+- Dr. Feng Liu (UTS), feng.liu@uts.edu.au
+- Dr. Wenkai Xu (Gatsby Unit, UCL), wenkaix@gatsby.ucl.ac.uk
+- Prof. Jie Lu (UTS), jie.lu@uts.edu.au
+- A/Prof. Guangquan Zhang (UTS), guangquan.zhang@uts.edu.au
+- Prof. Arthur Gretton (Gatsby Unit, UCL), arthur.gretton@gmail.com
+- Dr. Danica J. Sutherland (UBC), djs@djsutherland.ml.
+
 
 # Software version
 Torch version is 1.1.0. Python version is 3.7.3. CUDA version is 10.1.
@@ -28,19 +36,25 @@ After you download both data, you should run all 14 python files successfully.
 
 1) run
 
+```
 python Deep_Kernel_Blob.py
+```
 
 you can obtain average test power of MMD-D on Blob dataset;
 
 2) run 
 
+```
 python Baselines_Kernel_Blob.py
+```
 
 you can obtain average test power of MMD-O, C2ST-L, C2ST-S, ME and SCF on Blob dataset;
 
 3) run 
 
+```
 python Ablation_Tests_Blob.py
+```
 
 you can obtain average test power of L+J, G+J, G+C and D+C on Blob dataset.
 
@@ -48,19 +62,25 @@ you can obtain average test power of L+J, G+J, G+C and D+C on Blob dataset.
 
 1) run
 
+```
 python Deep_Kernel_HDGM.py
+```
 
 you can obtain average test power of MMD-D on HDGM dataset;
 
 2) run 
 
+```
 python Baselines_Kernel_HDGM.py
+```
 
 you can obtain average test power of MMD-O, C2ST-L, C2ST-S, ME and SCF on HDGM dataset;
 
 3) run 
 
+```
 python Ablation_Tests_HDGM.py
+```
 
 you can obtain average test power of L+J, G+J, G+C and D+C on HDGM dataset.
 
@@ -68,19 +88,25 @@ you can obtain average test power of L+J, G+J, G+C and D+C on HDGM dataset.
 
 1) run
 
+```
 python Deep_Kernel_HIGGS.py
+```
 
 you can obtain average test power of MMD-D on Higgs dataset;
 
 2) run 
 
+```
 python Baselines_Kernel_HIGGS.py
+```
 
 you can obtain average test power of MMD-O, C2ST-L, C2ST-S, ME and SCF on Higgs dataset;
 
 3) run 
 
+```
 python Ablation_Tests_HIGGS.py
+```
 
 you can obtain average test power of L+J, G+J, G+C and D+C on Higgs dataset.
 
@@ -88,13 +114,17 @@ you can obtain average test power of L+J, G+J, G+C and D+C on Higgs dataset.
 
 1) run
 
+```
 python Deep_Baselines_MNIST.py
+```
 
 you can obtain average test power of MMD-D, MMD-O, C2ST-L, C2ST-S, ME and SCF on MNIST dataset;
 
 2) run 
 
+```
 python Ablation_Tests_MNIST.py
+```
 
 you can obtain average test power of L+J, G+J, G+C and D+C on MNIST dataset.
 
@@ -102,13 +132,17 @@ you can obtain average test power of L+J, G+J, G+C and D+C on MNIST dataset.
 
 1) run
 
+```
 python Deep_Baselines_CIFAR10.py
+```
 
 you can obtain average test power of MMD-D, MMD-O, C2ST-L, C2ST-S, ME and SCF on CIFAR10 dataset;
 
 2) run 
 
+```
 python Ablation_Tests_CIFAR10.py
+```
 
 you can obtain average test power of L+J, G+J, G+C and D+C on CIFAR10 dataset.
 
@@ -116,13 +150,17 @@ you can obtain average test power of L+J, G+J, G+C and D+C on CIFAR10 dataset.
 
 1) run
 
+```
 python Interpretability_CIFAR10_train_location.py
+```
 
 you can obtain the best test locations (trained to maximize ME statistic) of deep-kernel ME and ME tests;
 
 2) run 
 
+```
 python Interpretability_CIFAR10_select_location.py
+```
 
 you can obtain the best test locations (selected to maximize ME statistic) of deep-kernel ME.
 
